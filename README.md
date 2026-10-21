@@ -47,6 +47,7 @@ line, a JSON configuration file or a batch row.
 | Locus-tag prefix | **Yes** | `--locus-tag-prefix`; use the prefix registered for the annotation |
 | True sequence lengths | **Yes**, but a separate file is not always required | `--fai`, `--assembly-report`, existing `##sequence-region` declarations, or recognised ANNEVO length comments |
 | Prediction provenance policy | **Yes**, but explicit flags are not always required | Automatic ANNEVO header detection, both `--predictor` and `--predictor-version`, a full `--inference`, or explicit `--no-inference` |
+| Predictor model | **No** | `--predictor-model`; records the actual model in default naming, manifest description and reports; requires a predictor and version |
 | Taxonomy ID | **No** | Optional `--taxon-id`; otherwise preserve a valid existing `##species`, or omit it when absent |
 | Output path | **No** | Automatic package layout unless overridden |
 | Translation table | **No explicit flag required** | Existing per-CDS tables are preserved; missing translating-CDS tables use fallback 1 unless overridden |
@@ -59,32 +60,42 @@ identity, development-environment availability or acceptance of the annotation.
 
 ## Quick start: ANNEVO
 
-### Recommended run with an independent length index
+### Explicit predictor, version and model
+
+This example works with an unversioned ANNEVO header when recognised
+sequence-length comments are present:
 
 ```bash
 python3 ena_gffprep.py \
-  --input /path/to/ilConVacc3.annevo_2.2.3.Invertebrate.gff \
-  --fai /path/to/ilConVacc3.fa.fai \
-  --assembly-accession GCA_948150665.1 \
-  --locus-tag-prefix YOURPREFIX
+  --input /path/to/Abraxas_sylvata.GCA_964187985.1.annevo_2.2.1.Insecta.gff \
+  --assembly-accession GCA_964187985.1 \
+  --locus-tag-prefix YOURPREFIX \
+  --predictor ANNEVO \
+  --predictor-version 2.2.1 \
+  --predictor-model Insecta
 ```
 
-Replace the paths, assembly accession and prefix for your annotation.
-`YOURPREFIX` is a placeholder, not a registered prefix.
+Replace the paths, accession and prefix for your annotation. `YOURPREFIX` is a
+placeholder, not a registered prefix. `Insecta` is the model used to generate
+this example annotation; supply the actual model for each input, or omit the
+option if you are not recording one. It is not the organism name or taxon ID.
 
-Recognised ANNEVO comments identify the predictor and version, select its adapter
-and supply accurate method text such as:
+`--predictor ANNEVO` selects ANNEVO processing in automatic source-format mode.
+You do not also need `--source-format annevo`. If the input lacks usable length
+comments, add an independent length index:
 
-```text
-inference=ab initio prediction:ANNEVO:2.2.3
+```bash
+--fai /path/to/matching-assembly.fa.fai
 ```
 
-The tool checks content headers, not filenames. An explicit `--predictor ANNEVO` also selects the ANNEVO adapter in automatic mode. An unversioned ANNEVO header identifies the adapter but still needs `--predictor-version` unless an explicit inference/no-inference policy is used. Conflicting explicit predictor,
-version or inference metadata is rejected.
+A FAI is recommended for checking sequence names and lengths against the exact
+assembly, even when comment lengths are available. The accession flag does not
+download sequence metadata.
 
-### Minimum ANNEVO run
+### Minimum run with versioned ANNEVO headers
 
-If the input has recognised **versioned** ANNEVO provenance and sequence-length comments:
+If recognised input comments already identify ANNEVO, its version and sequence
+lengths, only these three options need to be supplied:
 
 ```bash
 python3 ena_gffprep.py \
@@ -93,11 +104,21 @@ python3 ena_gffprep.py \
   --locus-tag-prefix YOURPREFIX
 ```
 
-When neither a FAI nor an assembly report is supplied, the ANNEVO workflow
-attempts to read those length comments automatically. If they are missing or
-unrecognised, supply an external length source. It does not estimate sequence
-length from the last annotated feature. Comment-only lengths produce a warning;
-an independent check against the exact assembly is recommended.
+Optionally add `--predictor-model Invertebrate` if that was the model actually
+used. Model metadata is never inferred from a filename or guessed from taxonomy.
+
+Versioned headers supply predictor/version automatically. Unversioned headers
+identify ANNEVO but cannot provide its version: normally supply
+`--predictor-version` explicitly. An accurate full inference or explicit
+`--no-inference` is an alternative provenance policy, but recording a model still
+requires predictor and version. Explicit metadata conflicting with a detected
+version is rejected.
+
+When neither FAI nor assembly report is supplied, ANNEVO mode attempts to read
+recognised length comments automatically, including supported spacing/case
+variants. Missing or unrecognised comments require an external source. Lengths
+are never estimated from the last annotated feature. Comment-only lengths
+produce a warning; compare them with the exact submitted assembly.
 
 ## Other annotation sources
 
@@ -109,12 +130,15 @@ python3 ena_gffprep.py \
   --source-format generic \
   --predictor ACTUAL_TOOL \
   --predictor-version ACTUAL_VERSION \
+  --predictor-model ACTUAL_MODEL \
   --fai /path/to/assembly.fa.fai \
   --assembly-accession GCA_123456789.1 \
   --locus-tag-prefix YOURPREFIX
 ```
 
-Use actual provenance. Alternatively supply a complete, accurate inference value:
+Use actual provenance and omit `--predictor-model` when it is not applicable.
+A model may be a named trained checkpoint, model family or other model label
+used by the predictor; it does not select or run that model. Alternatively supply a complete, accurate inference value:
 
 ```bash
 --inference "ab initio prediction:ACTUAL_TOOL:ACTUAL_VERSION"
@@ -135,19 +159,76 @@ must already share an appropriate logical ID and consistent Parent metadata.
 Orphan components, shared internal subtrees and ambiguous CDS products require
 an appropriate adapter or prior correction.
 
-## Output package
+## Naming, model metadata and output package
 
-By default, output is created under the current directory:
+The default GFF filename follows:
 
 ```text
-prepared_annotations/GCA_948150665.1.ANNEVO.2.2.3/
-    GCA_948150665.1.ANNEVO.2.2.3.ena.gff3.gz
+ACCESSION.PREDICTOR.PREDICTOR-VERSION.PREDICTOR-MODEL.ena.gff3.gz
+```
+
+If no model is supplied, its component and separating dot are omitted:
+
+```text
+ACCESSION.PREDICTOR.PREDICTOR-VERSION.ena.gff3.gz
+```
+
+For the explicit ANNEVO example above:
+
+| Item | With `--predictor-model Insecta` | Without a model |
+| --- | --- | --- |
+| Label / package directory name | `GCA_964187985.1.ANNEVO.2.2.1.Insecta` | `GCA_964187985.1.ANNEVO.2.2.1` |
+| GFF filename | `GCA_964187985.1.ANNEVO.2.2.1.Insecta.ena.gff3.gz` | `GCA_964187985.1.ANNEVO.2.2.1.ena.gff3.gz` |
+| Manifest NAME | `GCA_964187985.1.ANNEVO.2.2.1.Insecta decoupled annotation` | `GCA_964187985.1.ANNEVO.2.2.1 decoupled annotation` |
+| Manifest DESCRIPTION model text | Appends `Predictor model: Insecta.` | No model text appended |
+
+With the model specified, the default output is:
+
+```text
+prepared_annotations/GCA_964187985.1.ANNEVO.2.2.1.Insecta/
+    GCA_964187985.1.ANNEVO.2.2.1.Insecta.ena.gff3.gz
     manifest.txt
     locus_tags.tsv
     preparation.json
     preparation.txt
     VALIDATE.txt
 ```
+
+The default manifest description is:
+
+```text
+Ab initio genome annotation prepared for ENA decoupled submission. Prediction provenance: ab initio prediction:ANNEVO:2.2.1. Predictor model: Insecta.
+```
+
+Model metadata is also recorded in `preparation.json` under
+`submission_metadata.predictor_model` and, for package runs,
+`workflow.source_detection.model`. The CDS inference remains
+`ab initio prediction:ANNEVO:2.2.1`; this option does not append the model to
+inference or add a new per-feature model attribute.
+
+### Naming overrides
+
+| Option | Effect |
+| --- | --- |
+| `--label LABEL` | Replaces the automatic filename stem and default directory name. The default manifest NAME then follows that label. |
+| `--output-dir PATH` | Changes the exact package directory, leaving the label-based GFF filename unchanged. |
+| `--out-root PATH` | Changes the parent of automatically named package directories. |
+| `--name TEXT` | Replaces the manifest NAME, including its automatic model-bearing form. |
+| `--description TEXT` | Replaces the generated description; supplied model text is still appended. |
+| `--output PATH` | In advanced explicit-output mode, uses the exact requested GFF path instead of automatic naming. |
+
+Avoid filename/name overrides if you want the standard pattern. Predictor case
+is preserved, so `ANNEVO` and `annevo` produce different label spelling. Unsafe
+filename characters, such as spaces or slashes in a model, become underscores;
+the original model text remains in description/report metadata. Use concise
+filename-safe model names for predictable labels. The model must be nonempty
+printable ASCII when provided; a blank setting is treated as omitted.
+
+Without predictor metadata (for example, generic `--no-inference` preparation),
+the fallback label is accession + input filename stem. That fallback cannot be
+combined with a model unless predictor and version are also supplied.
+
+### Output files
 
 | File | Purpose |
 | --- | --- |
@@ -158,22 +239,10 @@ prepared_annotations/GCA_948150665.1.ANNEVO.2.2.3/
 | `preparation.txt` | Short preparation summary |
 | `VALIDATE.txt` | Example validation command for the generated package |
 
-The default label uses `ACCESSION.PREDICTOR.PREDICTOR-VERSION`, with `.PREDICTOR-MODEL` appended when supplied. Predictor spelling/case is preserved; unsafe filename characters are replaced with underscores. Model text is retained verbatim in description/report metadata. When no
-predictor is available, it uses the input filename stem with the accession.
 Existing output directories are refused. Package files are staged privately and
-published after successful preparation.
-
-For a distinct build, choose a new label or directory:
-
-```bash
---label GCA_948150665.1.annevo_build2
-```
-
-or:
-
-```bash
---output-dir /path/to/submission-project/prepared/build2
-```
+published after successful preparation. Changing a model label does not assign
+new biological gene identities: use the appropriate cumulative locus-tag map
+when preparing an annotation update.
 
 ## Complete option reference
 
@@ -219,7 +288,7 @@ does not strip an existing species directive.
 
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
-| `--predictor NAME` | Conditional | With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
+| `--predictor NAME` | Conditional | ANNEVO selects the ANNEVO adapter in auto mode, case-insensitively. With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
 | `--predictor-model MODEL` | Optional; absent | Records the specific prediction model. Included after predictor/version in the default GFF filename, package label and manifest NAME, and appended to DESCRIPTION even with a custom description. Does not change inference. Requires predictor and version, explicit or detected; no model is guessed. Supported in JSON as `predictor_model` and as a batch column. |
 | `--predictor-version VERSION` | Conditional | Version of the actual predictor; do not use the converter version. Both predictor fields are needed to construct inference for an unrecognised source. |
 | `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to CDS rows; conflicting existing values are rejected. Detected ANNEVO provenance must agree. |
@@ -306,6 +375,7 @@ python3 ena_gffprep.py \
   --assembly-accession GCA_948150665.1 \
   --locus-tag-prefix YOURPREFIX \
   --predictor ACTUAL_TOOL --predictor-version ACTUAL_VERSION \
+  --predictor-model ACTUAL_MODEL \
   --output /path/to/new-output/annotation.ena.gff3.gz \
   --report /path/to/new-output/preparation.json \
   --write-locus-tag-map /path/to/new-output/locus_tags.tsv \
@@ -329,16 +399,43 @@ CLI flags can enable boolean settings; use a separate config when you need to
 unset a true config boolean for a single run.
 
 A batch file must have an `input` column. Each job also needs all required values,
-which may be inherited from config or CLI defaults. Typical columns are:
+which may be inherited from config or CLI defaults. A model can be set in JSON:
 
-```text
-input	assembly_accession	locus_tag_prefix	fai	label
+```json
+{
+  "predictor": "ANNEVO",
+  "predictor_version": "2.2.1",
+  "predictor_model": "Insecta",
+  "out_root": "../prepared_annotations"
+}
 ```
 
-Create **real tab separators**, not spaces. Paths in nonblank row cells resolve
-relative to the TSV. Include optional columns such as `taxon_id`, `predictor`,
-`predictor_version` or `locus_tag_map` as needed. Names use underscores, not CLI
-hyphens. Explicit-output options are not valid batch columns.
+Use shared predictor/version/model defaults only when they accurately describe
+all jobs inheriting them. For mixed annotations, use per-row columns. This
+Python example creates a table with real tab separators; edit the placeholder
+paths and prefixes before running preparation:
+
+```bash
+python3 - <<'PYTHON'
+import csv
+with open("annotations.tsv", "w", newline="") as handle:
+    writer = csv.writer(handle, delimiter="\t")
+    writer.writerow(["input", "assembly_accession", "locus_tag_prefix",
+                     "predictor", "predictor_version", "predictor_model"])
+    writer.writerow(["/path/to/abraxas.gff", "GCA_964187985.1", "YOURPREFIX1",
+                     "ANNEVO", "2.2.1", "Insecta"])
+    writer.writerow(["/path/to/other.gff", "GCA_123456789.1", "YOURPREFIX2",
+                     "ANNEVO", "2.2.3", ""])
+PYTHON
+```
+
+The second row has no model only if no model is supplied by config/CLI defaults.
+A blank cell inherits rather than clears a default. For mixed model/no-model
+runs, omit a shared `predictor_model` and populate only the applicable row cells.
+
+Paths in nonblank row cells resolve relative to the TSV. Optional columns include
+`fai`, `assembly_report`, `taxon_id`, `locus_tag_map` and `label`. Column names use
+underscores, not CLI hyphens. Explicit-output options are not valid batch columns.
 
 ```bash
 python3 ena_gffprep.py \
@@ -434,6 +531,8 @@ helper's `--help` before choosing a separate workflow.
 | Symptom | What to check |
 | --- | --- |
 | Cannot determine predictor/version | Supply both predictor flags, a full inference, or explicit no-inference; confirm ANNEVO provenance comments are present. |
+| Model requires predictor/version | Supply both fields explicitly or use a recognised versioned header. A model does not supply the predictor version. |
+| Model missing from a custom filename or NAME | `--label`, `--name` and explicit `--output` override automatic naming; remove them or include the desired components yourself. |
 | No lengths / missing true sequence length | Supply the correct FAI/report, valid declarations for generic input, or recognised ANNEVO comments. Do not substitute maximum feature coordinates for sequence lengths. |
 | Missing parent / orphan component | Input needs a supported gene hierarchy; generic mode cannot invent one safely. |
 | Existing output directory/file | Choose a new label, directory or explicit file path. |
@@ -466,43 +565,3 @@ See [LOCUS_TAGS.md](LOCUS_TAGS.md), [VALIDATION.md](VALIDATION.md) and
 [CHANGELOG.md](CHANGELOG.md) for further details. Start with `ena_gffprep.py` to
 follow the CLI workflow, `ena_gffprep_core.py` for transformations and
 `ena_common.py` for shared I/O and package publication.
-
-## Predictor model and naming (0.5.6)
-
-```bash
-python3 ena_gffprep.py \
-  --input Abraxas_sylvata.GCA_964187985.1.annevo_2.2.1.Insecta.gff \
-  --assembly-accession GCA_964187985.1 \
-  --locus-tag-prefix WSITEST00001 \
-  --predictor ANNEVO \
-  --predictor-version 2.2.1 \
-  --predictor-model Insecta
-```
-
-This selects the ANNEVO adapter without requiring --source-format. Sequence
-length comments are read automatically when no external length source is given.
-Supply your registered prefix and real model. Neither filenames nor an ANNEVO
-header without a model are used to infer the model.
-
-Default GFF filename:
-`GCA_964187985.1.ANNEVO.2.2.1.Insecta.ena.gff3.gz`
-
-Default manifest NAME:
-`GCA_964187985.1.ANNEVO.2.2.1.Insecta decoupled annotation`
-
-DESCRIPTION includes `Predictor model: Insecta.`. Omitting --predictor-model
-omits the model component and description text entirely. This release changes
-the default naming separator from the previous predictor_version style to
-predictor.version even when no model is supplied.
-
-Explicit --label and --name still override default label and manifest name;
-explicit --output still controls the GFF path in advanced mode. Avoid those
-naming overrides if you want the automatic naming shown above. With --label,
-the default NAME follows that label. Model provenance remains in DESCRIPTION
-and preparation.json, including explicit-output runs.
-
-Length comments accept spacing/case variations. ANNEVO version headers may use
-v2.2.1, version 2.2.1 or 2.2.1. Unversioned headers select the adapter but do not
-invent a version. Unknown or ambiguous feature layouts still need explicit
-review: flexible header detection does not imply support for every future CDS
-representation. A conflicting detected version is rejected.
