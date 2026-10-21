@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.6 — Predictor selection and model provenance
+
+- Infer ANNEVO source format from an explicit ANNEVO predictor in auto mode.
+- Recognise unversioned ANNEVO headers without inventing a predictor version.
+- Accept spacing/case variants in ANNEVO length comments.
+- Add --predictor-model to CLI, config, batch and reports.
+- Use accession.predictor.version[.model] default labels and manifest names; append model to descriptions.
+- Preserve explicit source-format and naming overrides.
+- Add 11 regression methods; all 88 tests pass.
+
+
 This history covers the GFF preparation tool.
 
 ## 0.5.5 — Repository documentation cleanup

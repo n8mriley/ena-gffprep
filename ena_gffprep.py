@@ -21,7 +21,7 @@ from ena_common import (VERSION, check, input_stem, new_package, open_text, safe
 PATH_KEYS = {'input', 'fai', 'assembly_report', 'locus_tag_map', 'output_dir', 'out_root',
              'output', 'report', 'manifest', 'write_locus_tag_map'}
 SETTING_KEYS = PATH_KEYS | {'source_format', 'assembly_accession', 'taxon_id', 'locus_tag_prefix',
-    'translation_table', 'predictor', 'predictor_version', 'inference', 'label', 'name',
+    'translation_table', 'predictor', 'predictor_version', 'predictor_model', 'inference', 'label', 'name',
     'description', 'accession_column', 'width', 'start', 'step', 'default_product',
     'no_inference', 'strict_warnings', 'use_annevo_lengths'}
 
@@ -29,12 +29,16 @@ SETTING_KEYS = PATH_KEYS | {'source_format', 'assembly_accession', 'taxon_id', '
 def detect_source(path):
     """Return (predictor, version) from recognised leading comments.
     
+    ANNEVO headers may identify the predictor without specifying a version.
     Only ANNEVO is detected automatically. Conflicting versions raise ValueError;
     filenames are never treated as evidence of prediction provenance."""
     versions = set()
+    recognised = False
     with open_text(path) as handle:
         for number, line in enumerate(handle):
-            match = re.search(r'\bANNEVO\s+v([0-9]+(?:\.[0-9]+)+)', line, re.I) if line.startswith('#') else None
+            if line.startswith('#') and re.search(r'\b(?:generated\s+(?:with|by)\s+ANNEVO|ANNEVO\s+is\s+an?\s+ab\s+initio)', line, re.I):
+                recognised = True
+            match = re.search(r'\bANNEVO\s+(?:version\s*|v\s*)?([0-9]+(?:\.[0-9]+)+)', line, re.I) if line.startswith('#') else None
             if match:
                 versions.add(match[1])
             if line.strip() and not line.startswith('#'):
@@ -42,7 +46,7 @@ def detect_source(path):
             if number > 10000:
                 break
     check(len(versions) <= 1, 'Conflicting ANNEVO versions in input header')
-    return ('ANNEVO', next(iter(versions))) if versions else (None, None)
+    return ('ANNEVO', next(iter(versions), None)) if versions or recognised else (None, None)
 
 
 def configuration(path):
@@ -79,12 +83,13 @@ def resolve_settings(settings):
     detected, version = detect_source(s['input'])
     source_format = s.get('source_format', 'auto')
     check(source_format in {'auto', 'annevo', 'generic'}, 'Unsupported source_format')
-    s['source_format'] = ('annevo' if detected == 'ANNEVO' else 'generic') if source_format == 'auto' else source_format
+    s['source_format'] = ('annevo' if (s.get('predictor') or detected or '').casefold() == 'annevo' else 'generic') if source_format == 'auto' else source_format
     if detected:
         check(not s.get('predictor') or s['predictor'].lower() == detected.lower(), 'Predictor conflicts with ANNEVO header')
-        check(not s.get('predictor_version') or str(s['predictor_version']) == version, 'Predictor version conflicts with input header')
+        check(version is None or not s.get('predictor_version') or str(s['predictor_version']) == version, 'Predictor version conflicts with input header')
         s.setdefault('predictor', detected)
-        s.setdefault('predictor_version', version)
+        if version is not None:
+            s.setdefault('predictor_version', version)
     # Inference records the actual prediction method, not experimental support.
     if s.get('no_inference'):
         check(not s.get('inference'), '--no-inference cannot be combined with --inference')
@@ -93,8 +98,8 @@ def resolve_settings(settings):
         check(s.get('predictor') and s.get('predictor_version'),
               'Cannot determine predictor/version. Supply both --predictor and --predictor-version, --inference, or explicit --no-inference')
         s['inference'] = f'ab initio prediction:{s["predictor"]}:{s["predictor_version"]}'
-    elif detected:
-        check(s['inference'] == f'ab initio prediction:{detected}:{version}',
+    elif detected and s.get('predictor_version'):
+        check(s['inference'] == f"ab initio prediction:{detected}:{s['predictor_version']}",
               'Explicit inference conflicts with detected ANNEVO provenance')
     # Taxonomy is optional; the accession and registered tag namespace are required.
     for key in ['assembly_accession', 'locus_tag_prefix']:
@@ -109,17 +114,28 @@ def resolve_settings(settings):
     s.setdefault('use_annevo_lengths',False)
     s['automatic_annevo_lengths'] = bool(s['source_format']=='annevo' and not s.get('fai') and not s.get('assembly_report'))
     s['use_annevo_lengths'] = s['use_annevo_lengths'] or s['automatic_annevo_lengths']
+    if s.get('predictor_model'):
+        text_field(s['predictor_model'], 'predictor_model')
+        check(s.get('predictor') and s.get('predictor_version'),
+              '--predictor-model requires predictor and predictor-version (explicit or detected)')
     if s.get('predictor'):
-        suffix = re.sub(r'[^A-Za-z0-9._-]+','_',s['predictor'].lower())
+        # Preserve the requested spelling; normalise unsafe filename characters only.
+        components = [s['assembly_accession'], s['predictor']]
         if s.get('predictor_version'):
-            suffix += '_'+str(s['predictor_version'])
+            components.append(str(s['predictor_version']))
+        if s.get('predictor_model'):
+            components.append(s['predictor_model'])
+        label = '.'.join(re.sub(r'[^A-Za-z0-9._-]+', '_', c) for c in components)
     else:
-        suffix = input_stem(s['input'])
-    s['label'] = safe_label(s.get('label', s['assembly_accession']+'.'+suffix))
+        label = s['assembly_accession']+'.'+input_stem(s['input'])
+    s['label'] = safe_label(s.get('label', label))
     s['output_dir'] = str(Path(s.get('output_dir') or Path(s.get('out_root','prepared_annotations'))/s['label']).resolve())
     s.setdefault('name',s['label']+' decoupled annotation')
     s.setdefault('description','Ab initio genome annotation prepared for ENA decoupled submission.' +
                  (' Prediction provenance: '+s['inference']+'.' if s.get('inference') else ' Existing evidence metadata preserved.'))
+    if s.get('predictor_model'):
+        # Always retain model provenance, including with a custom description.
+        s['description'] += ' Predictor model: '+s['predictor_model']+'.'
     return s
 
 
@@ -141,7 +157,7 @@ def prepare_package(settings):
         report = core.prepare(SimpleNamespace(**values))
         # Keep core's hashes under stable source names, never transient output paths.
         report['workflow'] = {'toolkit_version':VERSION, 'label':label,
-            'source_detection':{'predictor':s.get('predictor'),'version':s.get('predictor_version')},
+            'source_detection':{'predictor':s.get('predictor'),'version':s.get('predictor_version'),'model':s.get('predictor_model')},
             'translation_table_fallback':s['translation_table'],
             'translation_table_source':'explicit' if settings.get('translation_table') is not None else 'default_nuclear_assumption',
             'automatic_annevo_comment_lengths':s['automatic_annevo_lengths'],
@@ -202,7 +218,8 @@ def parser():
     p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument('--version',action='version',version=VERSION)
     for key in sorted(SETTING_KEYS-{'no_inference','strict_warnings','use_annevo_lengths','taxon_id','translation_table','width','start','step'}):
-        p.add_argument('--'+key.replace('_','-'))
+        p.add_argument('--'+key.replace('_','-'),
+            help='Model used by the predictor; included in default label, manifest name and description.' if key=='predictor_model' else None)
     for key in ['taxon_id','translation_table','width','start','step']:
         p.add_argument('--'+key.replace('_','-'),type=int,
             help='Optional taxonomy ID; adds ##species. Without it, an existing valid directive is preserved.' if key=='taxon_id' else None)

@@ -19,7 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-VERSION = '0.5.5'
+VERSION = '0.5.6'
 GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',
@@ -188,7 +188,7 @@ def parse(path):
 def annevo_lengths(comments):
     """Extract sequence lengths from recognised ANNEVO comments; reject conflicts."""
     sizes = {}
-    pattern = re.compile(r'^# ----- prediction on sequence number [0-9]+ \(length = ([0-9]+), name = ([^)]+)\) -----$')
+    pattern = re.compile(r'^#\s*-+\s*prediction\s+on\s+sequence\s+number\s+[0-9]+\s*\(\s*length\s*=\s*([0-9]+)\s*,\s*name\s*=\s*([^)]*?\S)\s*\)\s*-+\s*$', re.I)
     for comment in comments:
         match = pattern.fullmatch(comment)
         if match:
@@ -695,7 +695,7 @@ def prepare(args):
                   'existing_suffix': 'ASCII alphanumeric, preserved verbatim', 'numbering_scope': 'whole annotation across sequences and gene types',
                   'retired_tags': 'reserved from supplied mapping; never automatically reused', 'repeat_region': 'no locus_tag'},
                   'locus_tag_prefix': args.locus_tag_prefix, 'translation_table_fallback': args.translation_table,
-                  'CDS_inference': inference},
+                  'predictor_model': getattr(args, 'predictor_model', None), 'CDS_inference': inference},
               'input_files_sha256': {str(p): sha256(p) for p in inputs if p},
               'sequence_lengths': {seq: sizes[seq] for seq in sorted({r['c'][0] for r in rows})},
               'feature_types_in_supported_subset': sorted({r['c'][2] for r in rows} & SUPPORTED_TYPES),

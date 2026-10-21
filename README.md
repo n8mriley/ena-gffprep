@@ -3,7 +3,7 @@
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
 Prepare existing ab initio annotations for ENA decoupled GFF3 submission. This
-README describes **tool version 0.5.5**. The scripts prepare local files; they do
+README describes **tool version 0.5.6**. The scripts prepare local files; they do
 not authenticate to ENA or submit data.
 
 The converter preserves prediction coordinates and intervals while normalising
@@ -31,7 +31,7 @@ python3 ena_gffprep.py --version
 python3 -m unittest discover -s tests -q
 ```
 
-Version 0.5.5 has 77 automated tests. See [VALIDATION.md](VALIDATION.md) for their
+Version 0.5.6 has 88 automated tests. See [VALIDATION.md](VALIDATION.md) for their
 scope and the distinction between historical integration evidence and fresh
 Webin validation.
 
@@ -79,12 +79,12 @@ and supply accurate method text such as:
 inference=ab initio prediction:ANNEVO:2.2.3
 ```
 
-The tool checks content headers, not filenames. Conflicting explicit predictor,
+The tool checks content headers, not filenames. An explicit `--predictor ANNEVO` also selects the ANNEVO adapter in automatic mode. An unversioned ANNEVO header identifies the adapter but still needs `--predictor-version` unless an explicit inference/no-inference policy is used. Conflicting explicit predictor,
 version or inference metadata is rejected.
 
 ### Minimum ANNEVO run
 
-If the input has recognised ANNEVO provenance **and sequence-length comments**:
+If the input has recognised **versioned** ANNEVO provenance and sequence-length comments:
 
 ```bash
 python3 ena_gffprep.py \
@@ -140,8 +140,8 @@ an appropriate adapter or prior correction.
 By default, output is created under the current directory:
 
 ```text
-prepared_annotations/GCA_948150665.1.annevo_2.2.3/
-    GCA_948150665.1.annevo_2.2.3.ena.gff3.gz
+prepared_annotations/GCA_948150665.1.ANNEVO.2.2.3/
+    GCA_948150665.1.ANNEVO.2.2.3.ena.gff3.gz
     manifest.txt
     locus_tags.tsv
     preparation.json
@@ -158,7 +158,7 @@ prepared_annotations/GCA_948150665.1.annevo_2.2.3/
 | `preparation.txt` | Short preparation summary |
 | `VALIDATE.txt` | Example validation command for the generated package |
 
-The default label combines assembly accession and predictor/version. When no
+The default label uses `ACCESSION.PREDICTOR.PREDICTOR-VERSION`, with `.PREDICTOR-MODEL` appended when supplied. Predictor spelling/case is preserved; unsafe filename characters are replaced with underscores. Model text is retained verbatim in description/report metadata. When no
 predictor is available, it uses the input filename stem with the accession.
 Existing output directories are refused. Package files are staged privately and
 published after successful preparation.
@@ -186,7 +186,7 @@ of them. Paths supplied directly on the CLI resolve from your working directory.
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
 | `--input PATH` | **Required** for preparation and audit; each batch job needs an input | Plain GFF3 or `.gz` input. No extension conversion is needed for valid GFF3 stored as `.gff`. |
-| `--source-format FORMAT` | Optional; `auto` | `auto` detects recognised ANNEVO headers, otherwise uses `generic`. `annevo` applies the numbered-CDS adapter; `generic` expects suitable grouping already. Setting `annevo` alone does not supply a predictor version. |
+| `--source-format FORMAT` | Optional; `auto` | `auto` uses the ANNEVO adapter when the supplied predictor is ANNEVO (case-insensitive) or recognised headers identify it; otherwise it uses `generic`. Explicit format choices override this selection. `annevo` applies the numbered-CDS adapter; `generic` expects suitable grouping already. Setting `annevo` alone does not supply a predictor version. |
 | `--fai PATH` | Optional file, but true lengths are required | Reads sequence IDs and lengths from an existing index; does not read nucleotide sequence. Checks names, duplicate IDs and length consistency. |
 | `--assembly-report PATH` | Optional alternative or supplement to FAI | Reads a standard NCBI assembly report for lengths and alias-to-accession mapping. Use the exact assembly version. Header accession conflicts are rejected when that metadata is present. |
 | `--accession-column COLUMN` | Optional; `genbank` | Assembly-report target accessions: use `genbank` or `refseq`. It has no useful effect without `--assembly-report`. |
@@ -220,6 +220,7 @@ does not strip an existing species directive.
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
 | `--predictor NAME` | Conditional | With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
+| `--predictor-model MODEL` | Optional; absent | Records the specific prediction model. Included after predictor/version in the default GFF filename, package label and manifest NAME, and appended to DESCRIPTION even with a custom description. Does not change inference. Requires predictor and version, explicit or detected; no model is guessed. Supported in JSON as `predictor_model` and as a batch column. |
 | `--predictor-version VERSION` | Conditional | Version of the actual predictor; do not use the converter version. Both predictor fields are needed to construct inference for an unrecognised source. |
 | `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to CDS rows; conflicting existing values are rejected. Detected ANNEVO provenance must agree. |
 | `--no-inference` | Optional; off | Explicitly disables adding new inference while retaining existing evidence. Cannot be combined with `--inference`. |
@@ -465,3 +466,43 @@ See [LOCUS_TAGS.md](LOCUS_TAGS.md), [VALIDATION.md](VALIDATION.md) and
 [CHANGELOG.md](CHANGELOG.md) for further details. Start with `ena_gffprep.py` to
 follow the CLI workflow, `ena_gffprep_core.py` for transformations and
 `ena_common.py` for shared I/O and package publication.
+
+## Predictor model and naming (0.5.6)
+
+```bash
+python3 ena_gffprep.py \
+  --input Abraxas_sylvata.GCA_964187985.1.annevo_2.2.1.Insecta.gff \
+  --assembly-accession GCA_964187985.1 \
+  --locus-tag-prefix WSITEST00001 \
+  --predictor ANNEVO \
+  --predictor-version 2.2.1 \
+  --predictor-model Insecta
+```
+
+This selects the ANNEVO adapter without requiring --source-format. Sequence
+length comments are read automatically when no external length source is given.
+Supply your registered prefix and real model. Neither filenames nor an ANNEVO
+header without a model are used to infer the model.
+
+Default GFF filename:
+`GCA_964187985.1.ANNEVO.2.2.1.Insecta.ena.gff3.gz`
+
+Default manifest NAME:
+`GCA_964187985.1.ANNEVO.2.2.1.Insecta decoupled annotation`
+
+DESCRIPTION includes `Predictor model: Insecta.`. Omitting --predictor-model
+omits the model component and description text entirely. This release changes
+the default naming separator from the previous predictor_version style to
+predictor.version even when no model is supplied.
+
+Explicit --label and --name still override default label and manifest name;
+explicit --output still controls the GFF path in advanced mode. Avoid those
+naming overrides if you want the automatic naming shown above. With --label,
+the default NAME follows that label. Model provenance remains in DESCRIPTION
+and preparation.json, including explicit-output runs.
+
+Length comments accept spacing/case variations. ANNEVO version headers may use
+v2.2.1, version 2.2.1 or 2.2.1. Unversioned headers select the adapter but do not
+invent a version. Unknown or ambiguous feature layouts still need explicit
+review: flexible header detection does not imply support for every future CDS
+representation. A conflicting detected version is rejected.
