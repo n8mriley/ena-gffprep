@@ -1,0 +1,33 @@
+name: Python tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests on Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run automated tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check CLI version
+        run: python ena_gffprep.py --version
+
+      - name: Check CLI help
+        run: python ena_gffprep.py --help
