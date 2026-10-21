@@ -1,0 +1,3 @@
+input	fai	assembly_accession	taxon_id	locus_tag_prefix	label
+/path/to/sample1.annevo.gff	/path/to/sample1.fa.fai	GCA_111111111.1	12345	YOURPREFIX1	sample1.annevo
+/path/to/sample2.annevo.gff	/path/to/sample2.fa.fai	GCA_222222222.1	67890	YOURPREFIX2	sample2.annevo

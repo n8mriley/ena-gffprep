@@ -1,0 +1,60 @@
+{
+  "toolkit_version": "0.5.5",
+  "automated_test_methods": 77,
+  "full_annotation_regression": {
+    "feature_rows": 282576,
+    "genes": 17451,
+    "decompressed_gff3_matches_0_4_0": true,
+    "locus_tag_map_matches_0_4_0": true
+  },
+  "bundled_gff_validation": {
+    "exit_code": 0,
+    "reported_rules": {
+      "EXON_LENGTH": 10693,
+      "CDS_INTRON_LENGTH": 32
+    },
+    "passed_message": true,
+    "scope": "Bundled local gff3tools; not authenticated Webin validation or submission"
+  },
+  "source_files_sha256": {
+    "webin-cli-10.0.0-beta.jar": "05c7070b4f1aa646eb19f34db844360d9d50155f1244b2b4377496efa1edfb72"
+  },
+  "optional_taxonomy_regression": {
+    "input": "original ilConVacc3 annotation",
+    "only_gff3_change": "##species line omitted",
+    "feature_rows_unchanged": true,
+    "validation": {
+      "exit_code": 0,
+      "reported_rules": {
+        "EXON_LENGTH": 10693,
+        "CDS_INTRON_LENGTH": 32
+      },
+      "passed_message": true,
+      "scope": "Bundled local gff3tools; not authenticated Webin validation or submission"
+    }
+  },
+  "documentation_release": {
+    "documented_functions_and_classes": 56,
+    "automated_tests_passed": 79,
+    "processing_ast_matches_0_5_1": true,
+    "comparison_excludes": "Docstrings, comments, source locations and toolkit version constant only",
+    "prior_integration_results": "Other integration results in this file were inherited from 0.5.1; no new authenticated Webin validation was performed."
+  },
+  "locus_tag_update": {
+    "tests_passed": 89,
+    "new_regression_methods": 10,
+    "scope": "Local automated tests only. Other integration results refer to prior releases; no fresh Webin validation or submission performed."
+  },
+  "scope": "GFF-only distribution. Full-data integration and validator results below are historical, inherited from earlier releases; no fresh Webin validation or submission.",
+  "gff_only_release": {
+    "removed_validator_option": "--sequence",
+    "fai_support_retained": true,
+    "automated_tests_passed": 77
+  },
+  "repository_cleanup": {
+    "automated_tests_passed": 77,
+    "report_field": "feature_types_in_supported_subset",
+    "processing_changes": "None; documentation, diagnostic text and report-field naming only.",
+    "scope": "Local automated tests; full-data integration results are historical."
+  }
+}

@@ -1,0 +1,33 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Python environments
+.venv/
+venv/
+
+# Generated preparation and review outputs
+prepared_annotations/
+results/
+webin_review/
+batch_summary.json
+webin-cli.report
+*.report
+*.log
+
+# External binaries and release archives
+*.jar
+*.zip
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+.netrc
+config.local.json
+
+# Operating-system files
+.DS_Store
