@@ -1,4 +1,6 @@
 # ENA GFF preparation tools 0.5.5
+\n[![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
+
 
 Prepare existing ab initio annotations for ENA’s decoupled GFF3 pilot.
 The tools preserve predictions and do not submit anything or authenticate to ENA.
