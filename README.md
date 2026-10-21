@@ -1,20 +1,65 @@
-# ENA GFF preparation tools 0.5.5
-\n[![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
+# ENA GFF preparation tools
 
+[![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
-Prepare existing ab initio annotations for ENA’s decoupled GFF3 pilot.
-The tools preserve predictions and do not submit anything or authenticate to ENA.
+Prepare existing ab initio annotations for ENA decoupled GFF3 submission. This
+README describes **tool version 0.5.5**. The scripts prepare local files; they do
+not authenticate to ENA or submit data.
 
-`ena_gffprep.py` is the main CLI; keep it alongside `ena_gffprep_core.py`
-and `ena_common.py`. Python 3.9+ and the standard library are sufficient.
-Java 17+ is needed only for validation with the supplied Webin build.
+The converter preserves prediction coordinates and intervals while normalising
+supported GFF representations and adding submission metadata. It does not remove
+short predictions to silence biological warnings. Supported feature-type
+normalisation, shared-leaf duplication and ANNEVO CDS grouping can change the
+representation and identifiers; this is not a byte-preserving file copier.
 
-This distribution focuses on GFF preparation and GFF-based report review.
-It contains no FASTA preparation, header conversion or sequence QC tools.
-FAI index support remains available to check sequence identifiers and lengths
-and generate `##sequence-region` declarations; nucleotide sequence is not read.
+## Requirements
 
-## Quick start: an ANNEVO annotation
+- Python **3.9 or newer**, using only the standard library. No pip installation,
+  GPU or Python environment is required.
+- Keep the scripts together: `ena_gffprep.py` imports `ena_gffprep_core.py` and
+  `ena_common.py`.
+- Input must be supported GFF3, plain text or gzip-compressed with a `.gz` suffix.
+  A `.gff` extension is accepted if the contents are GFF3. GTF/GFF2 is not supported.
+- Input text and metadata must be compatible with the scripts' ASCII checks.
+- Java **17 or newer** and a separately obtained compatible Webin JAR are needed
+  for validation, not for Python preparation. The JAR is not distributed here.
+
+Check the checkout:
+
+```bash
+python3 ena_gffprep.py --version
+python3 -m unittest discover -s tests -q
+```
+
+Version 0.5.5 has 77 automated tests. See [VALIDATION.md](VALIDATION.md) for their
+scope and the distinction between historical integration evidence and fresh
+Webin validation.
+
+## What is required for a normal preparation?
+
+Requirements apply to the resolved settings: values may come from the command
+line, a JSON configuration file or a batch row.
+
+| Information | Required? | How to provide it |
+| --- | --- | --- |
+| Input annotation | **Yes** | `--input` |
+| Assembly accession with version | **Yes** | `--assembly-accession`, e.g. `GCA_948150665.1`; the CLI also accepts GCF syntax, but verify the correct ENA primary accession for your submission |
+| Locus-tag prefix | **Yes** | `--locus-tag-prefix`; use the prefix registered for the annotation |
+| True sequence lengths | **Yes**, but a separate file is not always required | `--fai`, `--assembly-report`, existing `##sequence-region` declarations, or recognised ANNEVO length comments |
+| Prediction provenance policy | **Yes**, but explicit flags are not always required | Automatic ANNEVO header detection, both `--predictor` and `--predictor-version`, a full `--inference`, or explicit `--no-inference` |
+| Taxonomy ID | **No** | Optional `--taxon-id`; otherwise preserve a valid existing `##species`, or omit it when absent |
+| Output path | **No** | Automatic package layout unless overridden |
+| Translation table | **No explicit flag required** | Existing per-CDS tables are preserved; missing translating-CDS tables use fallback 1 unless overridden |
+| Previous locus-tag map | **Needed to protect historical assignments on updates** | `--locus-tag-map`; not needed for the first allocation |
+| Product fallback | **No** | Existing products are preserved; no new product name is invented by default |
+| Webin credentials, study or sample flags | **Not required by this preparation CLI** | Account and archive metadata checks belong to the separate Webin workflow |
+
+A successful preparation does not verify prefix registration, archived sequence
+identity, development-environment availability or acceptance of the annotation.
+
+## Quick start: ANNEVO
+
+### Recommended run with an independent length index
 
 ```bash
 python3 ena_gffprep.py \
@@ -24,18 +69,77 @@ python3 ena_gffprep.py \
   --locus-tag-prefix YOURPREFIX
 ```
 
-Replace YOURPREFIX with the prefix registered for your annotation. This example
-uses the supplied ilConVacc3 metadata; other assemblies need their own metadata.
-TEST is only a local test namespace, not a real registered prefix.
+Replace the paths, assembly accession and prefix for your annotation.
+`YOURPREFIX` is a placeholder, not a registered prefix.
 
-The tool detects ANNEVO v2.2.3 from the **file header**, selects its adapter and
-adds `inference=ab initio prediction:ANNEVO:2.2.3` to every CDS interval. It does
-not infer versions from filenames. A conflicting explicit predictor/version or
-ANNEVO inference is rejected.
+Recognised ANNEVO comments identify the predictor and version, select its adapter
+and supply accurate method text such as:
 
-Default output:
-
+```text
+inference=ab initio prediction:ANNEVO:2.2.3
 ```
+
+The tool checks content headers, not filenames. Conflicting explicit predictor,
+version or inference metadata is rejected.
+
+### Minimum ANNEVO run
+
+If the input has recognised ANNEVO provenance **and sequence-length comments**:
+
+```bash
+python3 ena_gffprep.py \
+  --input /path/to/annotation.gff \
+  --assembly-accession GCA_948150665.1 \
+  --locus-tag-prefix YOURPREFIX
+```
+
+When neither a FAI nor an assembly report is supplied, the ANNEVO workflow
+attempts to read those length comments automatically. If they are missing or
+unrecognised, supply an external length source. It does not estimate sequence
+length from the last annotated feature. Comment-only lengths produce a warning;
+an independent check against the exact assembly is recommended.
+
+## Other annotation sources
+
+For GFF3 with a supported gene hierarchy and correctly grouped CDS intervals:
+
+```bash
+python3 ena_gffprep.py \
+  --input /path/to/genes.gff3.gz \
+  --source-format generic \
+  --predictor ACTUAL_TOOL \
+  --predictor-version ACTUAL_VERSION \
+  --fai /path/to/assembly.fa.fai \
+  --assembly-accession GCA_123456789.1 \
+  --locus-tag-prefix YOURPREFIX
+```
+
+Use actual provenance. Alternatively supply a complete, accurate inference value:
+
+```bash
+--inference "ab initio prediction:ACTUAL_TOOL:ACTUAL_VERSION"
+```
+
+To preserve existing evidence without adding inference, explicitly use:
+
+```bash
+--no-inference
+```
+
+This does not delete existing inference. Existing differing inference is not
+silently overwritten. Adding inference records the prediction method; it does
+not demonstrate expression or biological correctness.
+
+`generic` does not repair every predictor dialect. Intervals of a single CDS
+must already share an appropriate logical ID and consistent Parent metadata.
+Orphan components, shared internal subtrees and ambiguous CDS products require
+an appropriate adapter or prior correction.
+
+## Output package
+
+By default, output is created under the current directory:
+
+```text
 prepared_annotations/GCA_948150665.1.annevo_2.2.3/
     GCA_948150665.1.annevo_2.2.3.ena.gff3.gz
     manifest.txt
@@ -45,77 +149,171 @@ prepared_annotations/GCA_948150665.1.annevo_2.2.3/
     VALIDATE.txt
 ```
 
-`--taxon-id` is optional. When supplied, the tool writes a matching
-`##species` directive. When omitted, no directive is added unless the input already
-contains a valid one, which is preserved. Explicit/header conflicts, conflicting
-input directives and nonpositive supplied IDs are still rejected. The report
-records whether taxonomy was explicit, preserved from the header or not provided.
-If a config supplies `taxon_id`, remove that config entry to omit it; blank batch
-cells inherit defaults. A header is not silently stripped just because a CLI
-argument is absent.
-
-The manifest points to the GFF3 in the same directory, ready for validation.
-`preparation.txt` is the short summary; JSON contains detailed checks and provenance.
-Existing output directories are refused. Failed preparations are not published.
-Keep the latest `locus_tags.tsv` permanently.
-
-### Defaults and overrides
-
-| Setting | Behaviour |
+| File | Purpose |
 | --- | --- |
-| Output root | `prepared_annotations/` under the current working directory |
-| Label | Assembly accession + detected predictor and version; generic inputs use accession + input stem |
-| `--label` | Choose a safe filename/directory label for a distinct annotation build |
-| `--output-dir` | Set the exact new package directory instead of the default |
-| `--out-root` | Choose a common parent for automatically named packages |
-| Genetic code | Fallback **1**, a nuclear assumption, explicitly recorded in the report |
-| `--translation-table` | Override the fallback; existing per-CDS tables remain unchanged |
-| Length source | Supplied FAI, assembly report or sequence-region declarations |
-| ANNEVO without external lengths | Automatically use recognised length comments, with a warning |
-| Biological QC | Advisory; no short gene/exon/intron is deleted or altered |
-| `--strict-warnings` | Optional: make warning findings fatal |
+| `*.ena.gff3.gz` | Prepared annotation |
+| `manifest.txt` | Annotation manifest with a relative path to the GFF3 |
+| `locus_tags.tsv` | Cumulative gene-to-tag mapping, including reserved historical entries; keep permanently |
+| `preparation.json` | Detailed checks, metadata, hashes and warnings |
+| `preparation.txt` | Short preparation summary |
+| `VALIDATE.txt` | Example validation command for the generated package |
 
-Do not apply code 1 indiscriminately to organelles. The tool cannot infer the
-right genetic code from sequence names. For mixed inputs, organelle CDSs need
-their correct existing code or separate preparation. Pseudogenic CDSs omit tables.
+The default label combines assembly accession and predictor/version. When no
+predictor is available, it uses the input filename stem with the accession.
+Existing output directories are refused. Package files are staged privately and
+published after successful preparation.
 
-A FAI is recommended as an independent length/membership check, but is not always
-required. ANNEVO comment lengths are convenient but not an independent assembly
-check. An NCBI assembly report can replace `--fai` via `--assembly-report` and map
-standard aliases to accessions. Use the report for the exact assembly version.
-No length source proves nucleotide identity with the archived reference.
-
-### Other GFF3 predictors
-
-For a standard GFF3 with correct multipart CDS grouping:
+For a distinct build, choose a new label or directory:
 
 ```bash
-python3 ena_gffprep.py \
-  --input /path/to/genes.gff3.gz --source-format generic \
-  --predictor ACTUAL_TOOL --predictor-version ACTUAL_VERSION \
-  --fai /path/to/genome.fa.fai \
-  --assembly-accession GCA_123456789.1 \
-  --locus-tag-prefix YOURPREFIX
+--label GCA_948150665.1.annevo_build2
 ```
 
-Use the real values, or supply an accurate full `--inference` string. To explicitly
-preserve existing evidence without adding an inference, use `--no-inference`.
-It does not remove existing attributes. Differing existing inference is never
-silently overwritten; it needs a deliberate merge decision.
+or:
 
-`auto` detects recognised ANNEVO headers and otherwise selects the generic adapter.
-Generic is **not** a universal dialect converter: one protein's CDS intervals must
-already share one ID and have consistent Parent relationships. Missing gene
-parents, ambiguous numbered CDS products, GTF/GFF2 and specialised biology require
-another adapter. No tool/version is fabricated for unrecognised sources.
+```bash
+--output-dir /path/to/submission-project/prepared/build2
+```
 
-## Many annotations: shared config and a TSV
+## Complete option reference
 
-A config is a JSON object of CLI setting names with underscores, e.g.
-`translation_table`, `out_root`, `predictor_version`. Only documented preparation
-settings are accepted. Paths in a config resolve relative to that config file.
+The tables below describe **normal package preparation** unless another mode is
+specified. Defaults are resolved by the workflow, so `--help` may not display all
+of them. Paths supplied directly on the CLI resolve from your working directory.
 
-`examples/nuclear_defaults.json` is a small starting point:
+### Input, sequence lengths and source format
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--input PATH` | **Required** for preparation and audit; each batch job needs an input | Plain GFF3 or `.gz` input. No extension conversion is needed for valid GFF3 stored as `.gff`. |
+| `--source-format FORMAT` | Optional; `auto` | `auto` detects recognised ANNEVO headers, otherwise uses `generic`. `annevo` applies the numbered-CDS adapter; `generic` expects suitable grouping already. Setting `annevo` alone does not supply a predictor version. |
+| `--fai PATH` | Optional file, but true lengths are required | Reads sequence IDs and lengths from an existing index; does not read nucleotide sequence. Checks names, duplicate IDs and length consistency. |
+| `--assembly-report PATH` | Optional alternative or supplement to FAI | Reads a standard NCBI assembly report for lengths and alias-to-accession mapping. Use the exact assembly version. Header accession conflicts are rejected when that metadata is present. |
+| `--accession-column COLUMN` | Optional; `genbank` | Assembly-report target accessions: use `genbank` or `refseq`. It has no useful effect without `--assembly-report`. |
+| `--use-annevo-lengths` | Optional; automatically enabled for ANNEVO without FAI/report | Reads recognised ANNEVO sequence-length comments. Requires the ANNEVO adapter and matching comments. Can also be requested with an external source for consistency checks. |
+
+A generic input may use existing `##sequence-region` declarations without an
+external length file. The ANNEVO automatic-comment path still requires recognised
+length comments if no FAI/report is supplied. FAI and assembly-report data must
+agree when used together. Sequence declarations are checked against external
+metadata rather than used to hide missing external entries. An assembly report
+can remap recognised sequence aliases; a FAI alone does not infer alias mappings.
+No combination of names and lengths proves archived nucleotide identity.
+
+### Assembly and taxonomy metadata
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--assembly-accession ACCESSION` | **Required** for normal and explicit-output preparation | Versioned `GCA_` or `GCF_` syntax. Written as manifest `PRIMARY_ID` when a manifest is produced; does not itself translate sequence names in column 1. |
+| `--taxon-id INTEGER` | Optional; absent | Positive taxonomy ID. Adds a canonical `##species` URI and rejects disagreement with existing input taxonomy. |
+| `--name TEXT` | Optional; label + ` decoupled annotation` | Manifest `NAME`. Quote values containing spaces. Does not rename genes or sequences. |
+| `--description TEXT` | Optional; generated preparation/provenance description | Manifest `DESCRIPTION`. Quote values containing spaces. Does not add feature products. |
+
+Without `--taxon-id`, a recognised existing `##species` directive is preserved;
+if there is none, no species directive is added. Conflicting input taxonomies are
+rejected. To omit a taxon supplied by a config, remove it from that config; a
+blank batch cell inherits defaults rather than clearing them. Omitting the flag
+does not strip an existing species directive.
+
+### Inference, products and genetic code
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--predictor NAME` | Conditional | With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
+| `--predictor-version VERSION` | Conditional | Version of the actual predictor; do not use the converter version. Both predictor fields are needed to construct inference for an unrecognised source. |
+| `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to CDS rows; conflicting existing values are rejected. Detected ANNEVO provenance must agree. |
+| `--no-inference` | Optional; off | Explicitly disables adding new inference while retaining existing evidence. Cannot be combined with `--inference`. |
+| `--translation-table INTEGER` | Optional; `1` | Fallback for translating CDSs missing a table. Existing valid per-CDS tables remain unchanged. Pseudogenic CDSs omit translation tables. |
+| `--default-product TEXT` | Optional; absent | Explicit fallback for CDSs missing a product; existing products remain unchanged. No product is invented when omitted; missing products are noted. |
+
+Table 1 is a **nuclear assumption**, not a universal choice. The tool does not
+infer organelle codes from names or taxonomy. Mixed-code annotations need correct
+existing per-CDS values or another deliberate preparation strategy. An explicit
+fallback does not override existing tables.
+
+### Locus tags
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--locus-tag-prefix PREFIX` | **Required** | 3–12 uppercase alphanumeric characters, starting with a letter: `[A-Z][A-Z0-9]{2,11}`. The tool checks syntax, not registration or ownership. |
+| `--locus-tag-map PATH` | Optional for first allocation; important for updates | Existing TSV containing `gene_id` and `locus_tag`. Preserves exact assignments and reserves entries absent from the current annotation. |
+| `--width INTEGER` | Optional; `6` | Minimum numeric suffix width. `--width 5` gives tags such as `WSITEST_00001`. Numbers expand beyond this width rather than wrap. Must be positive. |
+| `--start INTEGER` | Optional; `1` | Lower starting point for new numeric allocation. Supplied tags can raise the allocation above their numeric high-water mark. Must be positive. |
+| `--step INTEGER` | Optional; `1` | Positive increment between newly allocated numeric tags. Does not renumber existing assignments. |
+
+New tags use `PREFIX_number`, with the underscore separator. Existing ASCII
+alphanumeric suffixes are accepted and preserved. Decimal-version suffixes are
+rejected. Differently padded versions of the same numeric suffix remain rejected
+as ambiguous by this tool.
+
+Allocation is shared across the annotation's sequences and gene types. A gene's
+supported components share its tag; repeat_region is excluded. Historical numeric
+tags contribute to the high-water mark; alphanumeric suffixes are reserved but
+do not contribute a numeric maximum. Unused gaps are not automatically filled.
+
+For updates, supply the **complete latest cumulative map**, including reserved
+entries. Stable matching is by source gene ID, not coordinates or similarity;
+split, merged or renamed genes need curated reconciliation. See
+[LOCUS_TAGS.md](LOCUS_TAGS.md) for examples and registration guidance.
+
+### Package naming and warning policy
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--label LABEL` | Optional; derived | Output GFF filename stem and default package directory name. Start with a letter/digit; use only letters, digits, dots, underscores and hyphens. |
+| `--out-root PATH` | Optional; `prepared_annotations` | Parent directory for automatically named packages. |
+| `--output-dir PATH` | Optional | Exact new package directory; overrides the directory derived from output root + label. The label still controls the GFF filename. |
+| `--strict-warnings` | Optional; off | Treat findings in the preparation report's warnings list as fatal. Notes are distinct from warnings; this does not guarantee a warning-free Webin run. |
+
+There is no overwrite flag. Choose a new directory or label for each preparation.
+
+### Configuration, batch, audit and information
+
+| Option | Required? / default | Behaviour |
+| --- | --- | --- |
+| `--config PATH` | Optional | JSON defaults using option names with underscores; unknown keys are rejected. Preparation paths in it resolve relative to the JSON file. |
+| `--batch PATH` | Optional | Run jobs from a tab-separated table; cannot combine with audit or explicit-output options. Details below. |
+| `--batch-summary PATH` | Optional; `batch_summary.json` | JSON summary for batch mode only. Its path resolves from the working directory, not the batch file. Existing summaries are refused. |
+| `--audit-only` | Optional | Descriptive inspection requiring only input and a new report path; does not prepare a submission package. |
+| `--help`, `-h` | Optional | Display the CLI argument list and exit. |
+| `--version` | Optional | Display the converter version and exit. |
+
+### Explicit-output mode (advanced)
+
+These options are for scripts that need individual output paths. For most users,
+`--output-dir` is simpler.
+
+| Option | Requirement | Behaviour |
+| --- | --- | --- |
+| `--output PATH` | Required together with report and map output | Prepared GFF3; `.gz` suffix selects gzip compression. |
+| `--report PATH` | Required together with output and map output; also used by audit | Preparation JSON, or descriptive audit JSON in audit mode. |
+| `--write-locus-tag-map PATH` | Required together with output and report | New cumulative map; distinct from the input `--locus-tag-map`. |
+| `--manifest PATH` | Optional in explicit-output mode | Write the annotation manifest. Supplying this alone also selects explicit-output mode and therefore requires the other three output paths. |
+
+Outside audit mode, any of these four settings selects explicit-output mode.
+All normal preparation requirements still apply, including assembly accession.
+Output paths must be distinct, new, and must not overwrite inputs. Their parent
+directories must already exist. Package naming options do not relocate these
+explicit paths. This mode does not create `preparation.txt` or `VALIDATE.txt`.
+It cannot be combined with batch mode.
+
+```bash
+mkdir -p /path/to/new-output
+python3 ena_gffprep.py \
+  --input /path/to/annotation.gff \
+  --fai /path/to/assembly.fa.fai \
+  --assembly-accession GCA_948150665.1 \
+  --locus-tag-prefix YOURPREFIX \
+  --predictor ACTUAL_TOOL --predictor-version ACTUAL_VERSION \
+  --output /path/to/new-output/annotation.ena.gff3.gz \
+  --report /path/to/new-output/preparation.json \
+  --write-locus-tag-map /path/to/new-output/locus_tags.tsv \
+  --manifest /path/to/new-output/manifest.txt
+```
+
+## Shared configuration and batch runs
+
+Example JSON defaults:
 
 ```json
 {
@@ -124,8 +322,22 @@ settings are accepted. Paths in a config resolve relative to that config file.
 }
 ```
 
-Edit `examples/annotations.tsv` with actual input paths, assembly accessions,
-optional taxa and registered prefixes, then run:
+Use JSON booleans (`true`/`false`), not quoted boolean strings. Do not put mode
+switches such as `batch` or `audit_only` in this preparation-settings object.
+CLI flags can enable boolean settings; use a separate config when you need to
+unset a true config boolean for a single run.
+
+A batch file must have an `input` column. Each job also needs all required values,
+which may be inherited from config or CLI defaults. Typical columns are:
+
+```text
+input	assembly_accession	locus_tag_prefix	fai	label
+```
+
+Create **real tab separators**, not spaces. Paths in nonblank row cells resolve
+relative to the TSV. Include optional columns such as `taxon_id`, `predictor`,
+`predictor_version` or `locus_tag_map` as needed. Names use underscores, not CLI
+hyphens. Explicit-output options are not valid batch columns.
 
 ```bash
 python3 ena_gffprep.py \
@@ -134,124 +346,122 @@ python3 ena_gffprep.py \
   --batch-summary my_batch_summary.json
 ```
 
-TSV column names are CLI option names with underscores. Only `input` must be a
-column; all required values must ultimately come from config, CLI or a row.
-Precedence is **config < explicit CLI defaults < nonblank row values**. Row paths
-resolve relative to the TSV; relative CLI paths resolve from your current directory.
-Boolean TSV values must be `true` or `false`. Empty cells inherit defaults.
+Precedence is **config < explicit CLI defaults < nonblank batch cells**. Blank
+cells inherit; they do not erase a supplied value. Boolean TSV cells use `true`
+or `false`. Avoid a shared `output_dir` for multiple jobs; use an output root and
+individual labels or distinct per-row directories.
 
-Each row gets its own package. A failed row is reported and the others continue.
-The process exits 1 if any row failed, 0 if all succeeded, or 2 for top-level usage
-errors. Read the batch JSON for individual results. Use a new summary path on repeat
-runs. All rows are processed sequentially, with no scheduler or network dependency.
+Jobs run sequentially. Individual preparation failures are recorded and later
+jobs continue. Repeated output directories or locus-tag prefixes are refused:
+independent jobs must not allocate colliding tags. Prepare all chromosomes of one
+assembly together, or coordinate shared-prefix updates deliberately.
 
-The initial batch implementation refuses repeated locus-tag prefixes in one batch:
-independent runs under the same prefix could allocate duplicate identifiers. Use
-distinct registered prefixes or manage shared-prefix allocation as coordinated
-updates separately. Do not generate independent maps with the same prefix and
-assume they are globally unique.
+Exit statuses: **0** for success, **1** for one or more failed batch jobs,
+**2** for caught top-level preparation/usage errors. Inspect the batch summary
+for each job's outcome and use a fresh summary path when rerunning.
 
-## Updating an annotation
+## Audit without submission metadata
 
-Add the latest cumulative map to your next preparation:
+```bash
+python3 ena_gffprep.py \
+  --input /path/to/annotation.gff3.gz \
+  --audit-only \
+  --report source.audit.json
+```
 
-    --locus-tag-map /path/to/previous-package/locus_tags.tsv
+Only input and report are required. No accession, prefix, taxon, predictor or
+external length file is required for this descriptive mode. The report path must
+be new and its parent directory must exist. It does not produce a prepared GFF,
+manifest or locus-tag map. CDS counts/arithmetic grouped by parent are descriptive
+and can conflate multiple products under one parent. The 90-nt threshold is a
+review threshold, not an asserted ENA rejection rule.
 
-Choose a new `--label` or `--output-dir`. Existing source gene IDs retain tags;
-new genes get unused numbers and retired tags remain reserved. Do not reuse a TEST
-map for a different registered namespace. Stable mapping follows **gene IDs**;
-renumbered, split or merged models need identity reconciliation first.
+## Validate the prepared package
 
-The older explicit output-path options (`--output`, `--write-locus-tag-map`,
-`--report`, optional `--manifest`) remain available for scripting. Supply the first
-three together. They bypass the automatic package layout; use normal metadata and
-source options too. These legacy path options are not accepted in batch rows.
+Change into the generated package directory. Check `preparation.txt`, the JSON
+warnings and `VALIDATE.txt` before running the separately obtained Webin build.
 
-## Validation and submission
-
-Enter a generated package directory. `VALIDATE.txt` contains the command for its
-context. Set credentials in your environment using your normal account procedure.
+With credentials already set in your environment:
 
 ```bash
 java -Xmx4g -XX:ActiveProcessorCount=2 \
   -jar /absolute/path/to/webin-cli-10.0.0-beta.jar \
-  -context annotation -manifest manifest.txt \
-  -username "$WEBIN_USERNAME" -passwordEnv WEBIN_PASSWORD \
+  -context annotation \
+  -manifest manifest.txt \
+  -username "$WEBIN_USERNAME" \
+  -passwordEnv WEBIN_PASSWORD \
   -validate
 ```
 
-These commands follow
-the supplied pilot instructions by omitting `-test`. This particular custom JAR
-uses development submission URLs on both branches but different paths/account
-routes; follow your ENA contact's routing instructions rather than assuming
-ordinary release defaults.
+`-passwordEnv WEBIN_PASSWORD` names the environment variable; it does not take
+`"$WEBIN_PASSWORD"` as its value. The password variable must be exported so Java
+can read it. Keep credentials out of the repository and manifests.
 
-Success ends with `Submission(s) validated successfully.` Read the detailed
-report as well: warning-only validation can succeed. Check development availability
-of the exact sequence accessions and use registered metadata before submitting.
-If you choose to submit, replace `-validate` with `-submit` in the appropriate
-command. Under the supplied pilot instructions, share the returned analysis ID
-with ENA so they can manually start processing. No toolkit command performs that
-submission or sends messages.
+Follow your ENA contact's instructions for the intended environment and JAR;
+the supplied pilot command omits `-test`. Successful preparation does not check
+archive routing. A successful validation can still contain warnings; inspect the
+detailed report. No Python command in this repository submits data.
 
-## Optional advisory QC
+## Additional GFF helpers
 
-Run these from the toolkit directory; choose new output report paths/directories.
+Run from the toolkit directory and choose new output paths:
 
 ```bash
-# Source inspection without submission metadata:
-python3 ena_gffprep.py --input /path/to/genes.gff \
-  --audit-only --report source.audit.json
+# Associate supported diagnostic lines with the exact validated GFF:
+python3 ena_validation_review.py \
+  --gff /path/to/prepared.ena.gff3.gz \
+  --webin-report /path/to/exact-file.report \
+  --outdir webin_review
 
-# Map an exact Webin report to genes/locus tags:
-python3 ena_validation_review.py --gff /path/to/prepared.ena.gff3.gz \
-  --webin-report /path/to/exact-file.report --outdir webin_review
-
-# Bundled validator, without account/registry checks:
-python3 run_bundled_validator.py --jar /path/to/webin-cli-10.0.0-beta.jar \
-  --gff /path/to/prepared.ena.gff3.gz --log local-validation.log
+# Local bundled gff3tools check without account/registry checks:
+python3 run_bundled_validator.py \
+  --jar /path/to/webin-cli-10.0.0-beta.jar \
+  --gff /path/to/prepared.ena.gff3.gz \
+  --log local-validation.log
 ```
 
-The report mapper needs the exact validated GFF3, with matching line order.
-The 90-nt review threshold is descriptive, not an ENA rejection threshold.
-Audit-only can conflate multiple CDS products under one Parent; use it for the
-supported one-CDS-per-transcript cases. This distribution does not perform
-sequence-based translation or splice-motif QC.
+The report mapper needs the exact GFF that produced the log, including line
+order. It recognises supported diagnostic syntax rather than every possible log
+format. The bundled check is not a full authenticated Webin validation.
 
-`ena_add_inference.py` remains a separate helper for already-prepared files;
-normal runs now add provenance automatically/explicitly in the main preparer.
+`ena_add_inference.py` is a separate helper for explicit provenance additions to
+already-prepared files. Normal preparation already handles inference; use the
+helper's `--help` before choosing a separate workflow.
 
-## Limits and testing
+## Common mistakes
 
-GFF preparation retains the tested scope: ordinary explicit gene hierarchies,
-known bounds, single-parent representation and safe multipart IDs. It does not
-provide a complete biological validator or all SO/qualifier vocabularies. Some
-source gene feature types/pseudogene attributes are normalised as documented in
-the engine; genes, coordinates and intervals are not biologically curated.
+| Symptom | What to check |
+| --- | --- |
+| Cannot determine predictor/version | Supply both predictor flags, a full inference, or explicit no-inference; confirm ANNEVO provenance comments are present. |
+| No lengths / missing true sequence length | Supply the correct FAI/report, valid declarations for generic input, or recognised ANNEVO comments. Do not substitute maximum feature coordinates for sequence lengths. |
+| Missing parent / orphan component | Input needs a supported gene hierarchy; generic mode cannot invent one safely. |
+| Existing output directory/file | Choose a new label, directory or explicit file path. |
+| Invalid/conflicting locus tag | Check registered prefix syntax and use the latest compatible cumulative map. |
+| Legacy mode requires three outputs | Use `--output-dir` for a package; otherwise supply output, report and map output together. Audit mode is the exception for standalone `--report`. |
+| Webin cannot read the GFF file | Check the manifest path, actual filename and working directory. Generated package manifests point to a sibling GFF file. |
+| Webin cannot read password environment variable | Export the variable and pass its name to `-passwordEnv`, not the expanded password. |
+
+## Scope and limitations
+
+Supported preparation focuses on ordinary explicit gene hierarchies, known
+sequence bounds, safe multipart IDs and single-parent output. Shared leaf features
+may be duplicated per parent; shared internal subtrees are refused. Repeated CDS
+IDs identify intervals of one discontinuous feature, not necessarily an error.
 
 Origin crossings, remote locations, trans-splicing, explicit interval ordering,
-circular RNA, shared internal subtrees and some ribosomal-slippage representations
-remain unsupported or refused. Optional embedded peptide FASTA is also refused.
-No prefix registration, sequence availability, study ownership or archived base
-identity is verified. No product names or protein IDs are invented by default.
+circular RNA and some ribosomal-slippage representations remain unsupported or
+refused. Embedded sequence sections are rejected. The tool does not establish
+translation correctness, biological partiality, all controlled vocabularies or
+archive acceptance. No product names or protein IDs are invented by default.
 
-```bash
-python3 -m unittest discover -s tests -v
-```
+The GFF header includes `##gff-version 3`, `#!insdc-gff-version 0.5.1`, optional
+species metadata and sequence-region declarations. The profile version in the
+header is separate from the converter's software version.
 
-Keep the entire directory together; scripts import the shared modules. See
-VALIDATION.md for release checks, the exact supplied binary and the distinction
-between local test results and full submission acceptance.
+The preparation report uses `feature_types_in_supported_subset` for its local
+feature vocabulary summary. The corresponding internal set is `SUPPORTED_TYPES`.
 
-## Reading the code
-
-Start with `ena_gffprep.py` for annotation CLI workflows. `ena_gffprep_core.py` implements the GFF3 transformations; `ena_common.py` holds shared I/O and publication helpers. Module docstrings explain scope, and function docstrings describe inputs, results and limitations. QC helpers produce advisory reports and do not submit data.
-
-See [LOCUS_TAGS.md](LOCUS_TAGS.md) for registration, syntax, suffix conventions, feature propagation and safe annotation updates.
-
-## Report compatibility in 0.5.5
-
-The feature vocabulary summary is named `feature_types_in_supported_subset` in
-`preparation.json`. Update downstream report readers to use this key. The internal
-feature set is now `SUPPORTED_TYPES`. Neither change alters feature selection or
-GFF output. Product and exception diagnostic wording has also been clarified.
+See [LOCUS_TAGS.md](LOCUS_TAGS.md), [VALIDATION.md](VALIDATION.md) and
+[CHANGELOG.md](CHANGELOG.md) for further details. Start with `ena_gffprep.py` to
+follow the CLI workflow, `ena_gffprep_core.py` for transformations and
+`ena_common.py` for shared I/O and package publication.
