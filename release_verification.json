@@ -1,6 +1,6 @@
 {
-  "toolkit_version": "0.5.5",
-  "automated_test_methods": 77,
+  "toolkit_version": "0.5.6",
+  "automated_test_methods": 88,
   "full_annotation_regression": {
     "feature_rows": 282576,
     "genes": 17451,
@@ -56,5 +56,16 @@
     "report_field": "feature_types_in_supported_subset",
     "processing_changes": "None; documentation, diagnostic text and report-field naming only.",
     "scope": "Local automated tests; full-data integration results are historical."
+  },
+  "predictor_model_release": {
+    "automated_tests_passed": 88,
+    "new_test_methods": 11,
+    "scope": "Local automated tests and Abraxas preparation; no new Webin validation.",
+    "abraxas_preparation": {
+      "genes": 16528,
+      "feature_rows": 263764,
+      "label": "GCA_964187985.1.ANNEVO.2.2.1.Insecta",
+      "warnings": 2
+    }
   }
 }
