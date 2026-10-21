@@ -39,7 +39,7 @@ class PredictorModelTests(unittest.TestCase):
         self.assertTrue((self.root/'out'/f'{label}.ena.gff3.gz').exists())
         fields = dict(l.split('\t',1) for l in (self.root/'out/manifest.txt').read_text().splitlines())
         self.assertEqual(fields['NAME'], label+' decoupled annotation')
-        self.assertIn('Predictor model: Insecta.',fields['DESCRIPTION'])
+        self.assertIn('Model: Insecta',fields['DESCRIPTION'])
         report=json.loads((self.root/'out/preparation.json').read_text())
         self.assertEqual(report['submission_metadata']['predictor_model'], 'Insecta')
         self.assertEqual(report['workflow']['source_detection']['model'], 'Insecta')
@@ -47,11 +47,11 @@ class PredictorModelTests(unittest.TestCase):
     def test_omitted_model_has_no_empty_component(self):
         s = g.resolve_settings(self.settings)
         self.assertEqual(s['label'], 'GCA_123456789.1.ANNEVO.2.2.3')
-        self.assertNotIn('Predictor model:',s['description'])
+        self.assertNotIn('Model:',s['description'])
 
-    def test_custom_description_keeps_model(self):
+    def test_custom_description_is_preserved(self):
         s=g.resolve_settings({**self.settings,'predictor_model':'Insecta','description':'Custom annotation.'})
-        self.assertEqual(s['description'], 'Custom annotation. Predictor model: Insecta.')
+        self.assertEqual(s['description'], 'Custom annotation.')
 
     def test_explicit_generic_override(self):
         s=g.resolve_settings({**self.settings,'source_format':'generic'})
@@ -78,3 +78,11 @@ class PredictorModelTests(unittest.TestCase):
         self.source.write_text(self.source.read_text().replace('ANNEVO v2.2.3.', 'ANNEVO.'))
         with self.assertRaisesRegex(ValueError,'predictor-model requires'):
             g.resolve_settings({**self.settings,'no_inference':True,'predictor_model':'Insecta'})
+
+    def test_annotator_version_model_description(self):
+        settings = {**self.settings, "predictor_model": "Insecta"}
+        result = g.resolve_settings(settings)
+        self.assertEqual(result["description"], "Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3 Model: Insecta")
+        self.assertEqual(result["inference"], "ab initio prediction:ANNEVO:2.2.3")
+        without_model = g.resolve_settings(self.settings)
+        self.assertEqual(without_model["description"], "Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3")

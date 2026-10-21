@@ -31,7 +31,7 @@ python3 ena_gffprep.py --version
 python3 -m unittest discover -s tests -q
 ```
 
-Version 0.5.6 has 88 automated tests. See [VALIDATION.md](VALIDATION.md) for their
+Version 0.5.6 has 89 automated tests. See [VALIDATION.md](VALIDATION.md) for their
 scope and the distinction between historical integration evidence and fresh
 Webin validation.
 
@@ -180,7 +180,7 @@ For the explicit ANNEVO example above:
 | Label / package directory name | `GCA_964187985.1.ANNEVO.2.2.1.Insecta` | `GCA_964187985.1.ANNEVO.2.2.1` |
 | GFF filename | `GCA_964187985.1.ANNEVO.2.2.1.Insecta.ena.gff3.gz` | `GCA_964187985.1.ANNEVO.2.2.1.ena.gff3.gz` |
 | Manifest NAME | `GCA_964187985.1.ANNEVO.2.2.1.Insecta decoupled annotation` | `GCA_964187985.1.ANNEVO.2.2.1 decoupled annotation` |
-| Manifest DESCRIPTION model text | Appends `Predictor model: Insecta.` | No model text appended |
+| Manifest DESCRIPTION model text | Includes `Model: Insecta` in the default description | No Model field |
 
 With the model specified, the default output is:
 
@@ -197,7 +197,7 @@ prepared_annotations/GCA_964187985.1.ANNEVO.2.2.1.Insecta/
 The default manifest description is:
 
 ```text
-Ab initio genome annotation prepared for ENA decoupled submission. Prediction provenance: ab initio prediction:ANNEVO:2.2.1. Predictor model: Insecta.
+Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.1 Model: Insecta
 ```
 
 Model metadata is also recorded in `preparation.json` under
@@ -214,7 +214,7 @@ inference or add a new per-feature model attribute.
 | `--output-dir PATH` | Changes the exact package directory, leaving the label-based GFF filename unchanged. |
 | `--out-root PATH` | Changes the parent of automatically named package directories. |
 | `--name TEXT` | Replaces the manifest NAME, including its automatic model-bearing form. |
-| `--description TEXT` | Replaces the generated description; supplied model text is still appended. |
+| `--description TEXT` | Replaces the entire generated description; no model text is appended. |
 | `--output PATH` | In advanced explicit-output mode, uses the exact requested GFF path instead of automatic naming. |
 
 Avoid filename/name overrides if you want the standard pattern. Predictor case
@@ -276,7 +276,7 @@ No combination of names and lengths proves archived nucleotide identity.
 | `--assembly-accession ACCESSION` | **Required** for normal and explicit-output preparation | Versioned `GCA_` or `GCF_` syntax. Written as manifest `PRIMARY_ID` when a manifest is produced; does not itself translate sequence names in column 1. |
 | `--taxon-id INTEGER` | Optional; absent | Positive taxonomy ID. Adds a canonical `##species` URI and rejects disagreement with existing input taxonomy. |
 | `--name TEXT` | Optional; label + ` decoupled annotation` | Manifest `NAME`. Quote values containing spaces. Does not rename genes or sequences. |
-| `--description TEXT` | Optional; generated preparation/provenance description | Manifest `DESCRIPTION`. Quote values containing spaces. Does not add feature products. |
+| `--description TEXT` | Optional; generated Annotator / Version / Model description | Manifest `DESCRIPTION`. Quote values containing spaces. Does not add feature products. |
 
 Without `--taxon-id`, a recognised existing `##species` directive is preserved;
 if there is none, no species directive is added. Conflicting input taxonomies are
@@ -289,7 +289,7 @@ does not strip an existing species directive.
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
 | `--predictor NAME` | Conditional | ANNEVO selects the ANNEVO adapter in auto mode, case-insensitively. With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
-| `--predictor-model MODEL` | Optional; absent | Records the specific prediction model. Included after predictor/version in the default GFF filename, package label and manifest NAME, and appended to DESCRIPTION even with a custom description. Does not change inference. Requires predictor and version, explicit or detected; no model is guessed. Supported in JSON as `predictor_model` and as a batch column. |
+| `--predictor-model MODEL` | Optional; absent | Records the specific prediction model. Included after predictor/version in the default GFF filename, package label and manifest NAME, and recorded as Model in the default DESCRIPTION. An explicit --description is preserved unchanged. Does not change inference. Requires predictor and version, explicit or detected; no model is guessed. Supported in JSON as `predictor_model` and as a batch column. |
 | `--predictor-version VERSION` | Conditional | Version of the actual predictor; do not use the converter version. Both predictor fields are needed to construct inference for an unrecognised source. |
 | `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to CDS rows; conflicting existing values are rejected. Detected ANNEVO provenance must agree. |
 | `--no-inference` | Optional; off | Explicitly disables adding new inference while retaining existing evidence. Cannot be combined with `--inference`. |
@@ -565,3 +565,7 @@ See [LOCUS_TAGS.md](LOCUS_TAGS.md), [VALIDATION.md](VALIDATION.md) and
 [CHANGELOG.md](CHANGELOG.md) for further details. Start with `ena_gffprep.py` to
 follow the CLI workflow, `ena_gffprep_core.py` for transformations and
 `ena_common.py` for shared I/O and package publication.
+
+## Manifest description fields
+
+The default DESCRIPTION contains Annotator from --predictor, Version from --predictor-version and optional Model from --predictor-model. Missing fields are omitted. An explicit --description replaces the complete default and is preserved unchanged. This formatting does not change CDS inference attributes, filenames or manifest NAME.

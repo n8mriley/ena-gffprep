@@ -131,11 +131,11 @@ def resolve_settings(settings):
     s['label'] = safe_label(s.get('label', label))
     s['output_dir'] = str(Path(s.get('output_dir') or Path(s.get('out_root','prepared_annotations'))/s['label']).resolve())
     s.setdefault('name',s['label']+' decoupled annotation')
-    s.setdefault('description','Ab initio genome annotation prepared for ENA decoupled submission.' +
-                 (' Prediction provenance: '+s['inference']+'.' if s.get('inference') else ' Existing evidence metadata preserved.'))
-    if s.get('predictor_model'):
-        # Always retain model provenance, including with a custom description.
-        s['description'] += ' Predictor model: '+s['predictor_model']+'.'
+    description_parts = ["Ab initio genome annotation prepared for ENA decoupled submission."]
+    for key, title in [("predictor", "Annotator"), ("predictor_version", "Version"), ("predictor_model", "Model")]:
+        if s.get(key):
+            description_parts.append(title+": "+str(s[key]))
+    s.setdefault("description", " ".join(description_parts))
     return s
 
 

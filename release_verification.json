@@ -1,6 +1,6 @@
 {
   "toolkit_version": "0.5.6",
-  "automated_test_methods": 88,
+  "automated_test_methods": 89,
   "full_annotation_regression": {
     "feature_rows": 282576,
     "genes": 17451,
@@ -67,5 +67,10 @@
       "label": "GCA_964187985.1.ANNEVO.2.2.1.Insecta",
       "warnings": 2
     }
+  },
+  "description_wording_verification": {
+    "date": "2026-10-21",
+    "tests_passed": 89,
+    "scope": "Local tests only; no new Webin validation"
   }
 }

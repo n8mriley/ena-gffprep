@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Description wording
+
+- Format the default manifest description using Annotator, Version and optional Model fields.
+- Preserve explicit custom descriptions unchanged, without appending model text.
+- Leave CDS inference, filenames and manifest NAME unchanged.
+
 ## 0.5.6 — Predictor selection and model provenance
 
 - Infer ANNEVO source format from an explicit ANNEVO predictor in auto mode.

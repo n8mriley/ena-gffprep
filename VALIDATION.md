@@ -45,3 +45,7 @@ Preparation does not establish biological correctness or submission acceptance.
 ## Predictor/model regression
 
 Eleven new test methods cover adapter selection, unversioned and variant headers, length-comment spacing, model naming and report/manifest metadata, omitted models, explicit overrides and batch propagation. The supplied Abraxas annotation was also prepared with explicit ANNEVO 2.2.1 and Insecta model metadata; no fresh Webin validation or submission was performed.
+
+## Description wording verification — 2026-10-21
+
+All 89 local tests passed after updating the Annotator / Version / Model description format and custom-description handling. No new Webin validation was performed.
