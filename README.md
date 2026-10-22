@@ -2,8 +2,8 @@
 
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
-Prepare existing ab initio annotations for ENA decoupled GFF3 submission. This
-README describes **tool version 0.6.1**. The scripts prepare local files; they do
+Prepare existing genome annotations for ENA decoupled GFF3 submission. This
+README describes **tool version 0.7.0**. The scripts prepare local files; they do
 not authenticate to ENA or submit data.
 
 By default, the converter preserves prediction coordinates and intervals while normalising
@@ -17,10 +17,10 @@ representation and identifiers. Optional `--remove-organelles` excludes predicti
 - Python **3.9 or newer**, using only the standard library. No pip installation,
   GPU or Python environment is required.
 - Keep the scripts together: `ena_gffprep.py` imports `ena_gffprep_core.py` and
-  `ena_common.py`. Organelle filtering also uses `ena_organelles.py`.
-- `--remove-organelles` needs outbound HTTPS for an uncached lookup, or a complete offline NCBI sequence report. No extra Python packages or NCBI CLI are required.
+  `ena_common.py`, and `ena_formats.py`. Organelle filtering also uses `ena_organelles.py`.
+- Missing sequence lengths trigger an NCBI metadata lookup; `--remove-organelles` also uses NCBI metadata. Uncached lookups need outbound HTTPS, or use a complete offline report. No extra Python packages or NCBI CLI are required. Use `--no-ncbi-lengths` to disable length fallback.
 - Input must be supported GFF3, plain text or gzip-compressed with a `.gz` suffix.
-  A `.gff` extension is accepted if the contents are GFF3. GTF/GFF2 is not supported.
+  A `.gff` extension is accepted. Supported quoted GTF with explicit gene and transcript containers is also accepted; arbitrary GFF2 is not supported.
 - Input text and metadata must be compatible with the scripts' ASCII checks.
 - Java **17 or newer** and a separately obtained compatible Webin JAR are needed
   for validation, not for Python preparation. The JAR is not distributed here.
@@ -32,8 +32,94 @@ python3 ena_gffprep.py --version
 python3 -m unittest discover -s tests -q
 ```
 
-The current automated suite contains 120 tests. See [VALIDATION.md](VALIDATION.md)
+Run the bundled automated suite before use. See [VALIDATION.md](VALIDATION.md)
 for coverage, local checks and the separate Webin validation step.
+
+## Supported input dialects and automatic detection
+
+Detection uses file contents, never the filename. The detected dialect controls
+representation changes; `--predictor` identifies the annotation pipeline for
+naming and manifest metadata. They are separate choices. Unknown or ambiguous
+GFF3 sources use the strict `generic` path; select `--source-format gff3` to
+request common normalization explicitly. Software versions are not guessed.
+
+| Input | Recognition and conversion |
+| --- | --- |
+| ANNEVO | Recognized provenance comments or explicit predictor; established numbered-CDS grouping, comment lengths, inference, naming and tag behavior retained. |
+| Tiberius | Tiberius source; coding `transcript` becomes `mRNA`; separate segment IDs become one logical CDS ID per transcript. |
+| Tiberius with TransDecoder | Mixed sources and isoforms retained. Direct Tiberius CDSs receive ab initio inference; TransDecoder and combined-source records retain existing evidence only. |
+| Carbon-A | Carbon-A source; existing multipart CDS IDs retained. Status, confidence and incomplete-reason attributes retained; no partiality inferred. |
+| OrionGeno | OrionGeno source and quoted GTF attributes; constructs IDs/parents from gene_id/transcript_id, then groups CDS segments. Gene/transcript container rows are required. |
+| Helixer | Helixer source; common CDS grouping. A name-only species directive is reported and omitted, or replaced by the explicit taxon URI. Model basenames in comments are hints only, not software versions. |
+| BRAKER-compatible | AUGUSTUS/GeneMark/gmst/stringtie2utr components identify a compatible dialect, not proof of BRAKER or its version. Supply the actual pipeline metadata explicitly. |
+
+Every retained source, coordinate, strand, score and CDS phase is preserved.
+Coding transcripts become mRNA; numeric non-CDS phases become `.` and are
+retained as `original_phase`. Child `transcript_id` attributes move to
+`original_transcript_id`; redundant gene/transcript identifiers must agree with
+the hierarchy. Renamed CDS IDs are retained in `original_id`. Grouping rejects
+referenced segments, overlaps and conflicting product/evidence metadata.
+Existing exon, intron, UTR and codon intervals are retained, including split
+codon markers. No exons are invented and no stop-codon bases are appended.
+UTR coverage by supplied exon rows is not reconstructed automatically.
+
+For a recognized pure ab initio annotation, the source supplies the tool name. Provide the actual software version when known:
+
+```bash
+python3 ena_gffprep.py --input tiberius.gff3 \
+  --assembly-accession GCA_XXXXXXXXX.1 --locus-tag-prefix REGISTERED \
+  --predictor-version ACTUAL_VERSION --fai exact_assembly.fa.fai
+```
+
+For a BRAKER-compatible pipeline whose components are not covered by the direct-source policy, preserve existing evidence without
+adding an inference to every CDS:
+
+```bash
+python3 ena_gffprep.py --input braker.gff3 \
+  --assembly-accession GCA_XXXXXXXXX.1 --locus-tag-prefix REGISTERED \
+  --predictor BRAKER --predictor-version ACTUAL_VERSION \
+  --no-inference --fai exact_assembly.fa.fai
+```
+
+Replace placeholders with actual values. In automatic mode, direct CDS sources
+ANNEVO, Helixer, Tiberius, Carbon-A and OrionGeno are treated as ab initio.
+Outside the legacy ANNEVO path, recognized direct sources receive
+`ab initio prediction:TOOL[:VERSION]`; an unknown version is omitted. A supplied
+pipeline version is used only when its predictor name matches that component.
+Existing inference is preserved under this automatic policy. Combined source
+labels (such as `Tiberius,transdecoder`) are not treated as direct-source records.
+Other components receive no new inference. If no direct source is recognized,
+choose an explicit inference policy. Explicit `--prediction-method` choices can
+disable this automatic classification. ANNEVO retains its existing version and
+inference requirements for backward compatibility.
+
+`--no-inference` disables automatic additions and is an explicit
+provenance policy, not a promise of validation: short CDSs may still need accurate
+evidence. If a suitable inference truly applies to every CDS, use `--inference`
+instead. Per-feature existing inference and experiment attributes are preserved;
+explicit inference/map conflicts are rejected rather than overwritten. Component names outside the five direct-source rules are not converted into evidence claims.
+
+For component-specific provenance, use `--inference-map evidence.json` instead
+of `--inference` or `--no-inference`. The file is a JSON object whose keys match
+column 2 exactly; values are accurate inference strings or `null` to add nothing.
+Unmapped sources retain existing evidence without additions. Unknown source keys
+are rejected to catch spelling mistakes. For example, if the listed version is
+actually the version used:
+
+```json
+{"Tiberius": "ab initio prediction:Tiberius:ACTUAL_VERSION", "transdecoder": null}
+```
+
+The map path is resolved relative to the JSON config or batch TSV where supplied,
+its bytes are hashed, and its resolved values are recorded in the preparation
+report. This does not infer experimental support from component names.
+
+`preparation.json` records observed source counts, detected syntax/dialect,
+resolved predictor metadata and settings, prediction method, input hashes, adapter counts and
+length provenance. JSON config and batch TSV accept the same options using
+underscores. Fixed gzip timestamps and omitted embedded filenames make compressed
+GFF bytes reproducible for identical input and settings. Reports include actual
+paths and may differ between directories. Keep the locus-tag map for updates.
 
 ## What is required for a normal preparation?
 
@@ -45,8 +131,8 @@ line, a JSON configuration file or a batch row.
 | Input annotation | **Yes** | `--input` |
 | Assembly accession with version | **Yes** | `--assembly-accession`, e.g. `GCA_948150665.1`; the CLI also accepts GCF syntax, but verify the correct ENA primary accession for your submission |
 | Locus-tag prefix | **Yes** | `--locus-tag-prefix`; use the prefix registered for the annotation |
-| True sequence lengths | **Yes**, but a separate file is not always required | `--fai`, `--assembly-report`, existing `##sequence-region` declarations, or recognised ANNEVO length comments |
-| Prediction provenance policy | **Yes**, but explicit flags are not always required | Automatic ANNEVO header detection, both `--predictor` and `--predictor-version`, a full `--inference`, or explicit `--no-inference` |
+| True sequence lengths | **Yes**, but a separate file is not always required | `--fai`, `--assembly-report`, existing `##sequence-region` declarations, recognised ANNEVO length comments, or automatic exact-assembly NCBI fallback |
+| Prediction provenance policy | **Yes**, but explicit flags are not always required | ANNEVO header policy or automatic ab initio classification of the five recognized direct sources; otherwise predictor/version for a declared ab initio method, accurate `--inference` / `--inference-map`, or explicit `--no-inference` |
 | Predictor model | **No** | `--predictor-model`; records the actual model in default naming, manifest description and reports; requires a predictor and version |
 | Organelle exclusion | **No**; off by default | `--remove-organelles`; fetch/cache exact-assembly sequence metadata or provide `--organelle-metadata` |
 | Taxonomy ID | **No** | Optional `--taxon-id`; otherwise preserve a valid existing `##species`, or omit it when absent |
@@ -83,15 +169,14 @@ option if you are not recording one. It is not the organism name or taxon ID.
 
 `--predictor ANNEVO` selects ANNEVO processing in automatic source-format mode.
 You do not also need `--source-format annevo`. If the input lacks usable length
-comments, add an independent length index:
+comments or sequence-region declarations, NCBI lengths are fetched automatically. Alternatively, provide an independent length index:
 
 ```bash
 --fai /path/to/matching-assembly.fa.fai
 ```
 
 A FAI is recommended for checking sequence names and lengths against the exact
-assembly, even when comment lengths are available. The accession flag does not
-download sequence metadata.
+assembly, even when comment lengths are available. The accession supplies the exact assembly version for NCBI fallback when local lengths are missing.
 
 ### Minimum run with versioned ANNEVO headers
 
@@ -117,9 +202,65 @@ version is rejected.
 
 When neither FAI nor assembly report is supplied, ANNEVO mode attempts to read
 recognised length comments automatically, including supported spacing/case
-variants. Missing or unrecognised comments require an external source. Lengths
+variants. Missing or incomplete local lengths trigger NCBI fallback unless disabled. Explicit `--use-annevo-lengths` still requires recognized comments. Lengths
 are never estimated from the last annotated feature. Comment-only lengths
 produce a warning; compare them with the exact submitted assembly.
+
+## Automatic NCBI sequence lengths
+
+No extra flag is needed. When no FAI or assembly report was supplied and any
+retained annotated sequence lacks a length, the converter queries the NCBI
+Datasets sequence report for the exact `--assembly-accession` version.
+
+Precedence is explicit FAI/report, then input sequence-region declarations and
+recognized ANNEVO comments, then NCBI fallback. Complete local lengths make no
+length lookup. Missing entries in an explicitly supplied FAI/report remain
+errors; they are not silently filled from NCBI. If input lengths are only partly
+available, fallback checks the existing declarations against NCBI as well.
+
+The full paginated report is checked for assembly/version, positive lengths and
+exact sequence aliases. Accession versions are never stripped. Missing or
+ambiguous matches, conflicting lengths and out-of-bounds features stop
+preparation. NCBI fallback maps matched sequence aliases to GenBank accessions
+where available, otherwise the available canonical accession; use
+`--accession-column refseq` to request RefSeq accessions instead. This can change
+column 1 and its sequence-region declaration when the input used an alias.
+Coordinates and feature identifiers are preserved by this length lookup.
+
+```bash
+# Force local length sources only; requested organelle filtering is independent.
+--no-ncbi-lengths
+
+# Use a complete offline NCBI sequence report or a previously cached report.
+--sequence-metadata /path/to/sequence_report.jsonl
+
+# Choose the shared metadata cache directory.
+--sequence-cache-dir /path/to/ncbi-cache
+
+# Refresh metadata when a lookup is needed.
+--refresh-sequence-cache
+```
+
+These are optional additions to the normal preparation command, not standalone
+commands. The default cache is `$XDG_CACHE_HOME/ena-gffprep/ncbi-sequences/`, or
+`~/.cache/ena-gffprep/ncbi-sequences/` when XDG_CACHE_HOME is unset. Cached reports
+have no automatic expiry. Network or corrupt-cache failures stop the run; a
+refresh never silently reuses stale data. Offline metadata and refresh cannot
+be combined. Metadata options are used only when fallback or organelle filtering
+needs a report. Audit-only mode remains offline.
+
+Length fallback and organelle removal share one report within a preparation.
+The general `--sequence-metadata`, `--sequence-cache-dir` and
+`--refresh-sequence-cache` options also work with `--remove-organelles`; existing
+organelle-specific names remain supported. If both general and organelle-specific
+paths are supplied, they must identify the same files/directories.
+
+`preparation.json` records `sequence_lengths_source: ncbi_sequence_report` and
+`ncbi_sequence_lengths`, including metadata path, SHA-256, retrieval timestamp
+and source URLs when available, matched sequence aliases, lengths and reuse of
+organelle metadata. Preserve the exact cached/offline file for reproducible
+reruns. A metadata lookup does not download nucleotide sequences, prove sequence
+identity, remove organelles, or validate translations.
 
 ## Exclude predictions on organelle sequences
 
@@ -291,16 +432,18 @@ of them. Paths supplied directly on the CLI resolve from your working directory.
 
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
-| `--input PATH` | **Required** for preparation and audit; each batch job needs an input | Plain GFF3 or `.gz` input. No extension conversion is needed for valid GFF3 stored as `.gff`. |
-| `--source-format FORMAT` | Optional; `auto` | `auto` uses the ANNEVO adapter when the supplied predictor is ANNEVO (case-insensitive) or recognised headers identify it; otherwise it uses `generic`. Explicit format choices override this selection. `annevo` applies the numbered-CDS adapter; `generic` expects suitable grouping already. Setting `annevo` alone does not supply a predictor version. |
+| `--input PATH` | **Required** for preparation and audit; each batch job needs an input | Supported GFF3 or quoted GTF, plain or gzip. Syntax is determined from contents, not extension. |
+| `--source-format FORMAT` | Optional; `auto` | `auto` scans header and feature-source signatures across the input. Choices: `annevo`, `tiberius`, `carbon-a`, `oriongeno`, `helixer`, `braker`, `gtf`, `gff3`, `generic`. `gff3` applies common structural normalization to manually selected GFF3; `generic` retains the strict legacy path without normalization. Explicit choices override detected dialect. A format is not a software version. |
 | `--fai PATH` | Optional file, but true lengths are required | Reads sequence IDs and lengths from an existing index; does not read nucleotide sequence. Checks names, duplicate IDs and length consistency. |
 | `--assembly-report PATH` | Optional alternative or supplement to FAI | Reads a standard NCBI assembly report for lengths and alias-to-accession mapping. Use the exact assembly version. Header accession conflicts are rejected when that metadata is present. |
-| `--accession-column COLUMN` | Optional; `genbank` | Assembly-report target accessions: use `genbank` or `refseq`. It has no useful effect without `--assembly-report`. |
+| `--accession-column COLUMN` | Optional; `genbank` | Target accessions for assembly-report and NCBI-fallback mapping: `genbank` or `refseq`. No remapping is inferred by a FAI alone. |
+| `--sequence-metadata PATH` | Optional | Complete NCBI sequence JSON/JSONL or cache file for offline fallback; also usable for organelle filtering. |
+| `--sequence-cache-dir PATH` | Optional; standard shared cache | Override the exact-assembly sequence-report cache directory. |
+| `--refresh-sequence-cache` | Optional; off | Refresh when a lookup is needed; incompatible with offline metadata. |
+| `--no-ncbi-lengths` | Optional; off | Disable NCBI length fallback, including reuse of organelle metadata for missing lengths. Requested organelle filtering still operates. |
 | `--use-annevo-lengths` | Optional; automatically enabled for ANNEVO without FAI/report | Reads recognised ANNEVO sequence-length comments. Requires the ANNEVO adapter and matching comments. Can also be requested with an external source for consistency checks. |
 
-A generic input may use existing `##sequence-region` declarations without an
-external length file. The ANNEVO automatic-comment path still requires recognised
-length comments if no FAI/report is supplied. FAI and assembly-report data must
+Inputs may use existing `##sequence-region` declarations without an external length file. Missing local lengths trigger NCBI fallback unless disabled. Automatic ANNEVO comment parsing falls back when comments are absent; explicitly requesting comment lengths requires matching comments. FAI and assembly-report data must
 agree when used together. Sequence declarations are checked against external
 metadata rather than used to hide missing external entries. An assembly report
 can remap recognised sequence aliases; a FAI alone does not infer alias mappings.
@@ -325,10 +468,12 @@ does not strip an existing species directive.
 
 | Option | Required? / default | Behaviour |
 | --- | --- | --- |
-| `--predictor NAME` | Conditional | ANNEVO selects the ANNEVO adapter in auto mode, case-insensitively. With `--predictor-version`, constructs `ab initio prediction:NAME:VERSION`. Optional when detected from ANNEVO or when using full inference / explicit no-inference. |
+| `--predictor NAME` | Conditional | ANNEVO selects the ANNEVO adapter in auto mode, case-insensitively. For an ab initio method, with a version, constructs `ab initio prediction:NAME:VERSION`. Other recognized sources can supply the name automatically. Pipeline metadata may override detected component names outside the strict ANNEVO path. The automatic direct-source policy can also operate within mixed files; other components retain existing evidence. |
 | `--predictor-model MODEL` | Optional; absent | Records the specific prediction model. Included after predictor/version in the default GFF filename, package label and manifest NAME, and recorded as Model in the default DESCRIPTION. An explicit --description is preserved unchanged. Does not change inference. Requires predictor and version, explicit or detected; no model is guessed. Supported in JSON as `predictor_model` and as a batch column. |
+| `--prediction-method METHOD` | Optional; `auto` | `auto`, `ab-initio`, `evidence-assisted`, or `unspecified`. Mixed/component-assisted signatures default to evidence-assisted. In auto mode, the five recognized direct sources receive source-specific ab initio inference, including within mixed files. Explicit ab-initio permits global predictor/version inference; other explicit methods require an inference choice. Does not erase existing evidence. |
 | `--predictor-version VERSION` | Conditional | Version of the actual predictor; do not use the converter version. Both predictor fields are needed to construct inference for an unrecognised source. |
-| `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to CDS rows; conflicting existing values are rejected. Detected ANNEVO provenance must agree. |
+| `--inference TEXT` | Optional alternative to predictor pair | Complete nonempty printable ASCII inference value, quoted as one shell argument. Applied to all CDS rows; conflicting existing values are rejected. Automatic direct-source inference instead preserves existing values. Detected ANNEVO provenance must agree. |
+| `--inference-map JSON` | Optional alternative | Exact source-name to accurate inference/null mapping. Cannot combine with inference or no-inference. Unmapped CDS sources receive no new inference. Existing conflicting evidence is rejected. |
 | `--no-inference` | Optional; off | Explicitly disables adding new inference while retaining existing evidence. Cannot be combined with `--inference`. |
 | `--translation-table INTEGER` | Optional; `1` | Fallback for translating CDSs missing a table. Existing valid per-CDS tables remain unchanged. Pseudogenic CDSs omit translation tables. |
 | `--default-product TEXT` | Optional; absent | Explicit fallback for CDSs missing a product; existing products remain unchanged. No product is invented when omitted; missing products are noted. |
@@ -587,7 +732,7 @@ helper's `--help` before choosing a separate workflow.
 | Cannot determine predictor/version | Supply both predictor flags, a full inference, or explicit no-inference; confirm ANNEVO provenance comments are present. |
 | Model requires predictor/version | Supply both fields explicitly or use a recognised versioned header. A model does not supply the predictor version. |
 | Model missing from a custom filename or NAME | `--label`, `--name` and explicit `--output` override automatic naming; remove them or include the desired components yourself. |
-| No lengths / missing true sequence length | Supply the correct FAI/report, valid declarations for generic input, or recognised ANNEVO comments. Do not substitute maximum feature coordinates for sequence lengths. |
+| No lengths / missing true sequence length | Supply the correct FAI/report, valid declarations or ANNEVO comments; otherwise allow NCBI fallback or supply offline sequence metadata. Do not substitute maximum feature coordinates for sequence lengths. |
 | Missing parent / orphan component | Input needs a supported gene hierarchy; generic mode cannot invent one safely. |
 | Existing output directory/file | Choose a new label, directory or explicit file path. |
 | Invalid/conflicting locus tag | Check registered prefix syntax and use the latest compatible cumulative map. |

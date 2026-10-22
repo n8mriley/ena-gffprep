@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- Fall back to exact-assembly NCBI sequence lengths when local lengths are missing; share metadata/cache with organelle filtering.
+- Add offline sequence metadata, shared cache/refresh options and a switch to disable length fallback; record lookup hashes and alias mappings.
+
+- Detect supported source/dialect signatures from file contents, separately from pipeline provenance.
+- Add Tiberius, mixed Tiberius/TransDecoder, Carbon-A, OrionGeno GTF, Helixer and BRAKER-compatible normalization.
+- Preserve isoforms, source fields, coordinates, scores, CDS phases and existing evidence; reject ambiguous CDS product grouping.
+- Add optional per-source inference JSON mapping and explicit prediction-method policy; direct ANNEVO/Helixer/Tiberius/Carbon-A/OrionGeno sources use ab initio provenance while other components retain existing evidence unless explicitly configured.
+- Normalize non-CDS phases and child transcript identifiers with original values retained.
+- Preserve ANNEVO conversion behavior; write deterministic gzip headers.
+- Document format limits and separate local validation from Webin acceptance.
+
 ## 0.6.1 — Documentation review
 
 - Focus validation documentation and verification metadata on the current test suite and supported checks.

@@ -8,6 +8,7 @@ Unsupported biological representations are rejected rather than guessed."""
 import argparse
 import csv
 import gzip
+import io
 import hashlib
 import json
 import os
@@ -19,7 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-VERSION = '0.6.1'
+VERSION = '0.7.0'
 GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',
@@ -29,7 +30,7 @@ GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
 TRANSLATION_TABLES = {1,2,3,4,5,6,9,10,11,12,13,14,15,16,21,22,23,24,25,26,27,28,29,30,31,32,33}
 SUPPORTED_TYPES = {'gene','exon','intron','CDS','mRNA','rRNA','tRNA','ncRNA_gene',
     'protein_coding_gene','pseudogene','repeat_region','gap','five_prime_UTR',
-    'three_prime_UTR','recoded_codon','stop_codon','anticodon'}
+    'three_prime_UTR','recoded_codon','stop_codon','start_codon','anticodon'}
 EXCEPTIONS = {'ribosomal_slippage','trans_splicing','low-quality sequence region',
     'heterogeneous population sequenced','RNA editing','reasons given in citation',
     'rearrangement required for product','annotated by transcript or proteomic data','circular_RNA'}
@@ -47,7 +48,19 @@ def require(ok, message):
 
 def opened(path, mode='rt'):
     """Open ASCII text, choosing gzip from the .gz filename suffix."""
+    if str(path).endswith('.gz') and mode == 'wt':
+        # An empty embedded filename and fixed timestamp make gzip bytes stable.
+        return deterministic_gzip(path)
     return gzip.open(path, mode, encoding='ascii') if str(path).endswith('.gz') else open(path, mode, encoding='ascii')
+
+@contextmanager
+def deterministic_gzip(path):
+    """Write reproducible ASCII gzip, closing the underlying file explicitly."""
+    with open(path, 'wb') as raw:
+        with gzip.GzipFile(filename='', fileobj=raw, mode='wb', mtime=0) as compressed:
+            with io.TextIOWrapper(compressed, encoding='ascii', newline='\n') as text:
+                yield text
+
 
 def sha256(path):
     """Return the SHA-256 digest of raw file bytes, including gzip compression."""
@@ -129,7 +142,7 @@ def scalar(a, key, default=None):
     require(len(a[key]) == 1, f'{key} must have one value')
     return a[key][0]
 
-def parse(path):
+def parse(path, flexible=False):
     """Parse supported GFF3 into (rows, sequence_regions, comments).
     
     Each row retains columns, decoded attribute lists, integer coordinates and its
@@ -172,16 +185,27 @@ def parse(path):
                 start, end = int(c[3]), int(c[4])
                 require(1 <= start <= end, f'Line {line_no}: invalid coordinates')
                 require(c[6] in {'+', '-', '.', '?'}, f'Line {line_no}: invalid strand')
+                if flexible and c[2] != 'CDS' and c[7] in {'0','1','2'}:
+                    original_phase = c[7]; c[7] = '.'
+                else:
+                    original_phase = None
                 require(c[7] in {'0', '1', '2'} if c[2] == 'CDS' else c[7] in {'.','0','1','2'} if c[2] in {'recoded_codon','stop_codon'} else c[7] == '.', f'Line {line_no}: invalid phase')
                 if c[5] != '.':
                     require(__import__('math').isfinite(float(c[5])), f'Line {line_no}: invalid score')
-                a = attributes(c[8])
+                if flexible and re.match(r'\s*\w+\s+"', c[8]):
+                    from ena_formats import gtf_attributes, gtf_identity
+                    a = gtf_identity(gtf_attributes(c[8]), c[2], line_no)
+                else:
+                    a = attributes(c[8])
+                if flexible and original_phase is not None:
+                    require('original_phase' not in a or a['original_phase']==[original_phase], f'Line {line_no}: original_phase conflict')
+                    a['original_phase'] = [original_phase]
                 for key in ('ID', 'Parent', 'Derives_from', 'transcript_id', 'protein_id'):
                     if key in a:
                         require(all(not re.search(r'\s', v) for v in a[key]), f'Line {line_no}: whitespace in {key}')
                 for key in ('ID','transcript_id','protein_id'):
                     scalar(a, key)
-                rows.append({'c': c, 'a': a, 'start': start, 'end': end, 'line': line_no})
+                rows.append({'c': c, 'a': a, 'start': start, 'end': end, 'line': line_no, 'normalized_phase': flexible and original_phase is not None})
     require(rows, 'No features found')
     return rows, regions, comments
 
@@ -237,12 +261,15 @@ def adapt_annevo(rows):
             'assumption': 'Explicit ANNEVO adapter: one CDS product per mRNA; original segment IDs retained in original_id.'}
 
 
-def audit(path):
+def audit(path, source_format="auto"):
     """Return descriptive feature counts and CDS arithmetic without preparing output.
     
     CDS intervals are grouped by parent for this audit. Short-length thresholds
     are advisory observations, not evidence that a prediction should be deleted."""
-    rows, regions, comments = parse(path)
+    from ena_formats import detect
+    detection = detect(path, opened)
+    selected = detection['format'] if source_format == 'auto' else source_format
+    rows, regions, comments = parse(path, flexible=selected not in {'generic','annevo'})
     counts, per_seq = defaultdict(int), defaultdict(int)
     groups, exons = defaultdict(list), defaultdict(list)
     for r in rows:
@@ -272,7 +299,7 @@ def audit(path):
             exon_differences.append(transcript)
     headers = annevo_lengths(comments)
     return {'tool_version': VERSION, 'mode': 'audit_only_no_submission_metadata',
-            'input_name': Path(path).name, 'input_sha256': sha256(path),
+            'input_detection': detection, 'input_name': Path(path).name, 'input_sha256': sha256(path),
             'feature_rows': len(rows), 'feature_counts': dict(counts), 'annotated_sequences': len(per_seq),
             'feature_rows_by_sequence': dict(per_seq), 'sequence_region_directives': len(regions),
             'annevo_header_sequences': len(headers), 'annevo_header_lengths': headers,
@@ -371,7 +398,7 @@ def review_cds(nodes, pseudo_nodes, children):
     return result
 
 
-def lengths(args, regions):
+def lengths(args, regions, seqids=None):
     """Combine sequence aliases and lengths from regions, FAI and assembly report.
     
     Return alias mappings, sizes and source metadata for coordinate checks.
@@ -414,6 +441,11 @@ def lengths(args, regions):
                 require(seq not in sizes or sizes[seq] == size, f'Length mismatch for {seq}')
                 sizes[seq] = size
                 fai_seen.add(seq)
+    ncbi = None
+    # Explicit external files remain authoritative: never hide missing FAI/report IDs.
+    if not args.assembly_report and not args.fai and seqids and any(seq not in regions for seq in seqids) and getattr(args,'ncbi_lengths',False):
+        from ena_organelles import sequence_lengths
+        aliases, sizes, ncbi = sequence_lengths(args, set(seqids), regions)
     external = bool(args.assembly_report or args.fai)
     for old, size in regions.items():
         seq = aliases.get(old, old)
@@ -425,12 +457,14 @@ def lengths(args, regions):
         if not external:
             sizes[seq] = size
     require(sizes, 'No sequence lengths available')
-    return aliases, sizes, {'fai_ids': fai_seen, 'assembly_report_accessions': report_accessions}
+    return aliases, sizes, {'fai_ids': fai_seen, 'assembly_report_accessions': report_accessions, 'ncbi_sequence_report': ncbi}
 
 
 def prepare(args):
     """Prepare GFF3, locus tags, manifest and reports from an argument namespace.
     
+    CLI-resolved options enable exact-assembly NCBI fallback for missing lengths.
+    Direct API callers opt in with ncbi_lengths=True.
     Optionally remove NCBI-classified organelle predictions before adaptation.
     Validate the retained feature graph, apply supported representation changes, propagate
     submission metadata and stage outputs. Preserve prediction coordinates and
@@ -453,7 +487,8 @@ def prepare(args):
     outputs = [args.output, args.write_locus_tag_map, args.report] + ([args.manifest] if args.manifest else [])
     if organelle_report:
         outputs.append(organelle_report)
-    inputs = [args.input, args.locus_tag_map, args.assembly_report, args.fai]
+    args._ncbi_sequence_metadata = None  # never reuse metadata across distinct preparations
+    inputs = [args.input, args.locus_tag_map, args.assembly_report, args.fai, getattr(args, 'inference_map', None), getattr(args, 'sequence_metadata', None)]
     if remove_organelles and getattr(args, 'organelle_metadata', None):
         inputs.append(args.organelle_metadata)
     resolved = [Path(p).resolve() for p in outputs]
@@ -465,13 +500,19 @@ def prepare(args):
         require(bool(args.assembly_accession), '--assembly-accession required with --manifest')
         for value in [args.name, args.description, args.assembly_accession, str(Path(args.output).resolve())]:
             require(not any(c in value for c in '\r\n\t'), 'Manifest values must be single fields')
-    rows, regions, comments = parse(args.input)
+    source_format = getattr(args, 'source_format', 'generic')
+    flexible = source_format not in {'generic','annevo'}
+    rows, regions, comments = parse(args.input, flexible=flexible)
     require(not any(c.startswith('#!transl_table') for c in comments), 'File-level transl_table pragma requires explicit per-CDS translation tables before preparation; this version does not interpret organelle scope')
+    name_only_species = []
     input_species = []
     input_taxa = set()
     for comment in comments:
         if comment.startswith('##species'):
             match = re.search(r'(?:/taxonomy/|/tax-id/|[?&]id=)([0-9]+)(?:/|$|&)', comment)
+            if flexible and source_format == 'helixer' and match is None and re.fullmatch(r'##species\s+[A-Za-z][A-Za-z_]+', comment):
+                name_only_species.append(comment)
+                continue  # name is reported, never guessed into a taxonomy ID
             require(match is not None and int(match[1]) > 0, 'Input species URI is unrecognized or has an invalid taxon ID')
             input_taxa.add(int(match[1]))
             input_species.append(comment)
@@ -486,7 +527,7 @@ def prepare(args):
     source_format = getattr(args, 'source_format', 'generic')
     comment_sizes = annevo_lengths(comments) if getattr(args, 'use_annevo_lengths', False) else {}
     if getattr(args, 'use_annevo_lengths', False):
-        require(source_format == 'annevo' and comment_sizes, '--use-annevo-lengths requires --source-format annevo and recognized headers')
+        require(source_format == 'annevo' and (comment_sizes or getattr(args,'automatic_annevo_lengths',False) and not getattr(args,'explicit_annevo_lengths',False)), '--use-annevo-lengths requires --source-format annevo and recognized headers')
         for seq, size in comment_sizes.items():
             require(seq not in regions or regions[seq] == size, f'ANNEVO header/directive length mismatch: {seq}')
             regions[seq] = size
@@ -495,16 +536,35 @@ def prepare(args):
         from ena_organelles import filter_rows
         # Filter before adapting CDSs or allocating new locus tags.
         rows, regions, comments, organelle_filter, excluded_assignments = filter_rows(rows, regions, comments, args)
-    adapter = adapt_annevo(rows) if source_format == 'annevo' else {}
-    aliases, sizes, length_checks = lengths(args, regions)
+    if source_format == 'annevo':
+        adapter = adapt_annevo(rows)
+    elif flexible:
+        from ena_formats import adapt
+        adapter = adapt(rows, scalar, require)
+    else:
+        adapter = {}
+    aliases, sizes, length_checks = lengths(args, regions, {r['c'][0] for r in rows})
     if organelle_filter:
         for seq, expected in organelle_filter['matched_sequence_lengths'].items():
             require(sizes.get(aliases.get(seq,seq)) == expected, 'External/GFF length disagrees with NCBI metadata: '+seq)
     warnings, notes = [], []
+    if flexible:
+        phases = sum(r.get('normalized_phase', False) for r in rows)
+        adapter['non_CDS_phases_normalized'] = phases
+        adapter['name_only_species_directives'] = name_only_species
+        if name_only_species:
+            warnings.append('Name-only Helixer species directive omitted; supply --taxon-id for a canonical taxonomy URI.')
+        source_map = getattr(args, 'inference_by_source', {})
+        if source_map:
+            unassigned = sorted({r['c'][1] for r in rows if r['c'][2]=='CDS' and not source_map.get(r['c'][1])})
+            if unassigned:
+                notes.append('No new inference for unmapped CDS sources: '+', '.join(unassigned))
+        if getattr(args, 'no_inference', False):
+            notes.append('No new inference added; existing evidence attributes preserved.')
     if organelle_filter and organelle_filter['unclassified_retained_sequences']:
         warnings.append('Organelle status is unspecified for retained primary-assembly scaffolds: '+', '.join(organelle_filter['unclassified_retained_sequences']))
     removed_comments = []
-    if comment_sizes and not args.assembly_report and not args.fai:
+    if comment_sizes and not args.assembly_report and not args.fai and not length_checks['ncbi_sequence_report']:
         warnings.append('Sequence lengths came only from ANNEVO comments; confirm against the exact submitted assembly before submission.')
     if source_format == 'annevo':
         # Reordering invalidates position-dependent prediction comments. Retain only provenance.
@@ -517,9 +577,12 @@ def prepare(args):
     for r in rows:
         c, a = r['c'], r['a']
         validate_attributes(r)
-        if c[2] == 'CDS' and inference is not None:
-            require('inference' not in a or a['inference'] == [inference], f'Line {r["line"]}: existing inference differs; refusing to overwrite')
-            a['inference'] = [inference]
+        row_inference = getattr(args, 'inference_by_source', {}).get(c[1], inference)
+        if getattr(args, 'automatic_source_inference', False) and 'inference' in a:
+            row_inference = None  # preserve supplied evidence under automatic policy
+        if c[2] == 'CDS' and row_inference is not None:
+            require('inference' not in a or a['inference'] == [row_inference], f'Line {r["line"]}: existing inference differs; refusing to overwrite')
+            a['inference'] = [row_inference]
         if args.assembly_report:
             require(c[0] in aliases, f'No assembly report mapping for {c[0]}')
         c[0] = aliases.get(c[0], c[0])
@@ -707,7 +770,7 @@ def prepare(args):
     warnings = sorted(set(warnings))
     report = {'tool_version': VERSION, 'input_sha256': sha256(args.input),
               'assembly_accession': args.assembly_accession, 'source_format': source_format, 'adapter': adapter,
-              'sequence_lengths_source': 'assembly_report' if args.assembly_report else 'fai' if args.fai else 'annevo_comments' if comment_sizes else 'sequence_region',
+              'sequence_lengths_source': 'ncbi_sequence_report' if length_checks['ncbi_sequence_report'] else 'assembly_report' if args.assembly_report else 'fai' if args.fai else 'annevo_comments' if comment_sizes else 'sequence_region',
               'genes': len(active),
               'feature_rows': sum(len(v) for v in nodes.values()), 'shared_features_split': splits,
               'reserved_retired_gene_ids': sorted(set(mapping) - active_set), 'warnings': warnings, 'notes': notes,
@@ -717,7 +780,7 @@ def prepare(args):
                   'existing_suffix': 'ASCII alphanumeric, preserved verbatim', 'numbering_scope': 'whole annotation across sequences and gene types',
                   'retired_tags': 'reserved from supplied mapping; never automatically reused', 'repeat_region': 'no locus_tag'},
                   'locus_tag_prefix': args.locus_tag_prefix, 'translation_table_fallback': args.translation_table,
-                  'predictor_model': getattr(args, 'predictor_model', None), 'CDS_inference': inference},
+                  'predictor_model': getattr(args, 'predictor_model', None), 'CDS_inference': inference, 'CDS_inference_by_source': getattr(args, 'inference_by_source', {})},
               'input_files_sha256': {str(p): sha256(p) for p in inputs if p},
               'sequence_lengths': {seq: sizes[seq] for seq in sorted({r['c'][0] for r in rows})},
               'feature_types_in_supported_subset': sorted({r['c'][2] for r in rows} & SUPPORTED_TYPES),
@@ -732,6 +795,8 @@ def prepare(args):
                   'Sequence/assembly association and development-environment availability',
                   'Official gff3tools or Webin validation; no submission performed'],
               'validation_scope': 'Structural preparation only; official vocabulary, sequence translations, minimum biological specifications and Webin acceptance are not validated.'}
+    if length_checks['ncbi_sequence_report'] is not None:
+        report['ncbi_sequence_lengths'] = length_checks['ncbi_sequence_report']
     if organelle_filter is not None:
         report['organelle_filter'] = organelle_filter
     if args.strict_warnings:

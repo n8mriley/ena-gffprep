@@ -1,8 +1,9 @@
 """Retrieve assembly sequence metadata and exclude explicitly classified organelles.
 
-Only this opt-in module makes network requests. It uses the NCBI Datasets v2
-sequence report API, not nucleotide sequence downloads. Unknown classifications,
-unmatched sequences and partial responses are errors rather than nuclear guesses.
+This module supplies shared metadata for organelle filtering and length fallback.
+It uses the NCBI Datasets v2 sequence report API, not nucleotide downloads.
+Unmatched sequences and partial responses are errors. Organelle filtering also
+requires supported compartment classifications; length-only lookup does not.
 """
 import csv
 import hashlib
@@ -45,9 +46,10 @@ def field(record, snake, camel):
     return a if a is not None else b
 
 
-def validate_records(records, accession):
+def validate_records(records, accession, require_classification=True):
     """Normalise and check one complete assembly report; reject wrong versions.
 
+    Length-only callers can disable compartment classification checks.
     Missing location on a primary-assembly unplaced/unlocalized scaffold is
     retained as explicitly unclassified, not asserted to be nuclear. Other
     missing or unknown location values require review.
@@ -80,15 +82,15 @@ def validate_records(records, accession):
         role = record.get('role','')
         key = location.strip().casefold()
         unclassified = key in {'', 'unknown', 'na', 'un'}
-        if unclassified:
+        if require_classification and unclassified:
             check(str(unit).casefold() == 'primary assembly' and role in {'unplaced-scaffold','unlocalized-scaffold'},
                   'Missing/uncertain organelle classification for '+canonical)
-        else:
+        elif require_classification:
             check(key in ORGANELLES | NON_ORGANELLES,
                   'Unrecognised NCBI molecule location '+repr(location)+' for '+canonical)
-        check(not (str(unit).casefold() == 'non-nuclear' and key not in ORGANELLES | {'plasmid'}),
+        check(not require_classification or not (str(unit).casefold() == 'non-nuclear' and key not in ORGANELLES | {'plasmid'}),
               'Non-nuclear sequence lacks a recognised compartment: '+canonical)
-        result.append(dict(canonical=canonical, aliases=aliases, length=length,
+        result.append(dict(canonical=canonical, genbank=gb if gb != 'na' else None, refseq=rs if rs != 'na' else None, aliases=aliases, length=length,
                            location=location or 'unclassified', organelle=key in ORGANELLES,
                            unclassified=unclassified, assembly_unit=unit))
     return result
@@ -96,17 +98,17 @@ def validate_records(records, accession):
 
 def request_json(url):
     """Fetch one HTTPS page with a 30-second timeout and three bounded attempts."""
-    request = Request(url, headers={'Accept':'application/json', 'User-Agent':'ena-gffprep/0.6.1'})
+    request = Request(url, headers={'Accept':'application/json', 'User-Agent':'ena-gffprep/0.7.0'})
     for attempt in range(3):
         try:
             with urlopen(request, timeout=30) as response:
                 return json.load(response)
         except HTTPError as error:
             if error.code not in {429,500,502,503,504} or attempt == 2:
-                raise ValueError(f'NCBI metadata request failed (HTTP {error.code}); use --organelle-metadata for offline preparation') from error
+                raise ValueError(f'NCBI metadata request failed (HTTP {error.code}); use --sequence-metadata (or --organelle-metadata with filtering) for offline preparation') from error
         except (URLError, TimeoutError, OSError) as error:
             if attempt == 2:
-                raise ValueError('NCBI metadata request failed; check HTTPS access or supply --organelle-metadata') from error
+                raise ValueError('NCBI metadata request failed; check HTTPS access or supply --sequence-metadata for offline preparation') from error
         except (ValueError, UnicodeError) as error:
             raise ValueError('NCBI returned invalid JSON metadata') from error
         time.sleep(2 ** attempt)
@@ -135,8 +137,8 @@ def fetch_report(accession):
             break
         check(isinstance(token,str) and token not in tokens, 'Repeated/invalid NCBI pagination token')
         tokens.add(token)
-    check(total is None or total == len(reports), 'Incomplete NCBI sequence report; filtering refused')
-    validate_records(reports,accession)
+    check(total is None or total == len(reports), 'Incomplete NCBI sequence report; metadata use refused')
+    validate_records(reports,accession,require_classification=False)
     return dict(schema_version=1, assembly_accession=accession, reports=reports,
                 retrieved_at=datetime.now(timezone.utc).isoformat(), source_urls=urls)
 
@@ -160,24 +162,24 @@ def read_report(path):
     return data
 
 
-def load_metadata(args):
+def load_metadata(args, require_classification=True):
     """Load offline metadata, cached data or NCBI pages, with source provenance.
 
     Caches use versioned assembly names and atomic replacement. Cache validation
     failures stop the run; explicit refresh is required to replace corrupt data.
     """
     accession = args.assembly_accession
-    check(bool(re.fullmatch(r'GC[AF]_[0-9]+\.[0-9]+',accession or '')), 'Organelle removal needs an exact versioned assembly accession')
-    offline = getattr(args,'organelle_metadata',None)
-    refresh = getattr(args,'refresh_organelle_cache',False)
-    check(not offline or not refresh, 'Offline organelle metadata cannot be combined with cache refresh')
+    check(bool(re.fullmatch(r'GC[AF]_[0-9]+\.[0-9]+',accession or '')), 'NCBI metadata needs an exact versioned assembly accession')
+    offline = getattr(args,'sequence_metadata',None) or getattr(args,'organelle_metadata',None)
+    refresh = getattr(args,'refresh_sequence_cache',False) or getattr(args,'refresh_organelle_cache',False)
+    check(not offline or not refresh, 'Offline sequence metadata cannot be combined with cache refresh')
     if offline:
         path = Path(offline)
         data = read_report(path)
         source = 'offline_file'
     else:
         default = Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'ena-gffprep'/'ncbi-sequences'
-        directory = Path(getattr(args,'organelle_cache_dir',None) or default)
+        directory = Path(getattr(args,'sequence_cache_dir',None) or getattr(args,'organelle_cache_dir',None) or default)
         path = directory/(accession+'.json')
         if path.exists() and not refresh:
             data = read_report(path); source = 'cache'
@@ -195,7 +197,7 @@ def load_metadata(args):
                 if temporary and temporary.exists():temporary.unlink()
             source = 'ncbi_api'
     check(data.get('assembly_accession',accession) == accession, 'Metadata cache assembly/version mismatch')
-    records = validate_records(data['reports'],accession)
+    records = validate_records(data['reports'],accession,require_classification=require_classification)
     return records, dict(source=source, metadata_file=str(path.resolve()),
                          metadata_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                          retrieved_at=data.get('retrieved_at'), source_urls=data.get('source_urls',[]),
@@ -210,6 +212,7 @@ def filter_rows(rows, regions, comments, args):
     scaffolds with an explicit report entry, rather than declaring them nuclear.
     """
     records, provenance = load_metadata(args)
+    args._ncbi_sequence_metadata = (records, provenance)  # shared within this preparation only
     aliases = defaultdict(list)
     for record in records:
         for alias in record['aliases']:aliases[alias].append(record)
@@ -272,3 +275,35 @@ def write_exclusions(path, summary):
     with open(path,'w',encoding='ascii',newline='') as handle:
         writer=csv.DictWriter(handle,fieldnames=['seqid','ncbi_sequence','location','feature_rows','genes'],delimiter='\t',lineterminator='\n')
         writer.writeheader(); writer.writerows(summary['excluded_sequences'])
+
+
+def sequence_lengths(args, seqids, regions):
+    """Match exact assembly aliases and return fallback aliases, sizes, provenance.
+
+    Reuse metadata already loaded for organelle filtering in this preparation.
+    Length-only lookups do not require cellular-compartment classifications.
+    Never strip accession versions or infer lengths from feature coordinates.
+    """
+    shared = getattr(args, '_ncbi_sequence_metadata', None)
+    records, provenance = shared or load_metadata(args, require_classification=False)
+    index = defaultdict(list)
+    for record in records:
+        for alias in record['aliases']:
+            index[alias].append(record)
+    aliases, sizes, targets = {}, {}, {}
+    for seq in sorted(set(seqids) | set(regions)):
+        candidates = index.get(seq, [])
+        check(len(candidates) == 1, ('Ambiguous' if candidates else 'Unmatched')+' GFF sequence in NCBI metadata: '+seq)
+        record = candidates[0]
+        target = record.get('refseq') if getattr(args,'accession_column','genbank') == 'refseq' else record.get('genbank') or record['canonical']
+        check(target, 'No requested RefSeq accession in NCBI metadata for '+seq)
+        check(target not in sizes or sizes[target] == record['length'], 'Conflicting NCBI lengths for '+target)
+        if seq in seqids:
+            check(target not in targets or targets[target] == seq,
+                  'Multiple annotated sequence names map to one NCBI sequence: '+str(target))
+            targets[target] = seq
+        check(seq not in regions or regions[seq] == record['length'], 'GFF/NCBI sequence length mismatch: '+seq)
+        aliases[seq], sizes[target] = target, record['length']
+    return aliases, sizes, dict(provenance, reused_organelle_metadata=bool(shared),
+                               matched_sequences=aliases,
+                               matched_sequence_lengths={seq:sizes[target] for seq,target in aliases.items()})

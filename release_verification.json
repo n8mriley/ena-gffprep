@@ -1,11 +1,28 @@
 {
-  "toolkit_version": "0.6.1",
+  "toolkit_version": "0.7.0",
   "automated_tests": {
     "command": "python3 -m unittest discover -s tests -v",
-    "test_count": 120,
+    "test_count": 169,
     "status": "passed",
     "python_version": "3.12.14",
     "network_required": false
   },
-  "webin_validation_run_for_this_release": false
+  "annevo_compatibility": {
+    "baseline": "0.6.1",
+    "decompressed_gff": "identical",
+    "locus_tag_map": "identical",
+    "manifest": "identical",
+    "gzip_headers": "now deterministic"
+  },
+  "bundled_local_validator": {
+    "run": true,
+    "scope": "Local rules only; some checks used synthetic bounds. Five non-BRAKER examples passed; BRAKER retains six short-CDS evidence errors.",
+    "jar_sha256": "05c7070b4f1aa646eb19f34db844360d9d50155f1244b2b4377496efa1edfb72"
+  },
+  "authenticated_webin_validation_run": false,
+  "ncbi_length_fallback": {
+    "live_api_lookup": "passed",
+    "end_to_end_smoke": "passed",
+    "bundled_local_validator_smoke": "passed"
+  }
 }
