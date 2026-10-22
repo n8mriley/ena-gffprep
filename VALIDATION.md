@@ -1,51 +1,54 @@
-# Release verification — 0.5.6
+# Release verification — 0.6.0
 
-## Current scope and checks
+## Current checks
 
-This release contains GFF preparation and GFF-based review tools. The local
-bundled-validator helper accepts a GFF file only.
-
-All 88 automated test methods pass:
+All 120 automated test methods pass using Python standard-library unittest.
+Tests never contact NCBI or Webin. Run:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Coverage includes GFF parsing and escaping, ANNEVO adaptation, feature graph
-checks, phase arithmetic, stable locus-tag allocation and reservation,
-alphanumeric suffixes, repeat-region exclusion, RNA component propagation,
-optional taxonomy, inference provenance, package publication, config and batch
-handling, and mapping validator diagnostics to the exact GFF line numbers.
-The embedded-FASTA rejection test remains because it checks a GFF input boundary.
+Existing GFF conversion, inference, metadata, locus-tag and output-publication
+checks remain. New tests cover mitochondrial/plastid removal, exact versioned
+alias matching, no-organelle/no-annotation cases, unmatched and ambiguous IDs,
+unknown/missing classifications, incomplete JSON/JSONL, length conflicts,
+cross-boundary references, all-features removal, reserved tags, no-flag parity,
+cache reuse/refresh, pagination, transient/permanent network failures, corrupt
+cache, config/batch handling, package failure and exclusion sidecars.
 
-FAI name/length index support remains. It is useful for GFF coordinate checking
-and sequence-region declarations without reading or preparing nucleotide FASTA.
+The latest exact Annotator / Version / Model description and unchanged CDS
+inference are also covered.
 
-## Historical integration evidence
+## Real-data integration
 
-Earlier releases were tested using decoupled annotation instructions and
-Webin-CLI 10.0.0-beta (gff3tools 5.3.2).
-A full ilConVacc3 annotation preparation contained 17,451 genes and 282,576 rows.
-Local bundled validation returned exit 0 with no errors and 10,725 warnings:
-10,693 EXON_LENGTH and 32 CDS_INTRON_LENGTH. The optional-taxonomy regression
-also passed with those counts when the species directive was omitted.
+The supplied Abraxas sylvata ANNEVO 2.2.1 annotation was prepared using the live
+NCBI sequence report for GCA_964187985.1, model Insecta and a local test prefix.
+The metadata contained 60 sequence records and classified OZ076621.1
+(scaffold_MT_1) as Mitochondrion. All annotated sequences matched.
 
-These full-data results are inherited evidence, not fresh validation of 0.5.6.
-This release was verified with the retained automated suite; no authenticated
-Webin validation or submission was performed. The current locus-tag policy has
-local regression coverage but no new full-data Webin result.
+- Input: 263,764 feature rows and 16,528 genes.
+- Removed: 50 rows (7 genes, 7 mRNAs, 18 exons, 18 CDS intervals).
+- Retained: 263,714 feature rows and 16,521 genes.
+- Output sequence-region declarations omit OZ076621.1.
+- All retained feature rows exactly match the earlier unfiltered output, including tags.
+- A second offline preparation with the previous cumulative map reserves all seven excluded gene tags.
 
-## External checks
+The resulting file passed local gff3tools validation using the supplied
+webin-cli-10.0.0-beta.jar: exit 0, no errors, 6,945 EXON_LENGTH warnings and
+32 CDS_INTRON_LENGTH warnings (6,977 total). No validation rules were disabled.
+This is bundled local validation, not authenticated Webin validation, submission
+or archive-processing acceptance.
 
-Registered prefix ownership, exact archived sequence association and development
-availability, study/sample relationships and archive processing remain external
-checks. Unsupported circular or exceptional models need separate review.
-Preparation does not establish biological correctness or submission acceptance.
+Earlier unfiltered user-provided validation results and older integration
+results remain historical evidence, not new results for every release.
 
-## Predictor/model regression
+## Limits
 
-Eleven new test methods cover adapter selection, unversioned and variant headers, length-comment spacing, model naming and report/manifest metadata, omitted models, explicit overrides and batch propagation. The supplied Abraxas annotation was also prepared with explicit ANNEVO 2.2.1 and Insecta model metadata; no fresh Webin validation or submission was performed.
-
-## Description wording verification — 2026-10-21
-
-All 89 local tests passed after updating the Annotator / Version / Model description format and custom-description handling. No new Webin validation was performed.
+The filter uses metadata, not nucleotide comparison or organelle discovery.
+Unlabelled organelles and misclassified sequences can remain. Primary-assembly
+unplaced/unlocalized scaffolds lacking a compartment are explicitly reported as
+unclassified and retained with a warning. Other uncertain classifications fail.
+Offline JSONL completeness depends on the supplied file; all annotated sequence
+IDs must match. No registered prefix/account/assembly-availability checks or
+network submission are performed by preparation. See ORGANELLES.md for policy.
