@@ -19,7 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-VERSION = '0.5.6'
+VERSION = '0.6.0'
 GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',
@@ -431,7 +431,8 @@ def lengths(args, regions):
 def prepare(args):
     """Prepare GFF3, locus tags, manifest and reports from an argument namespace.
     
-    Validate the feature graph, apply supported representation changes, propagate
+    Optionally remove NCBI-classified organelle predictions before adaptation.
+    Validate the retained feature graph, apply supported representation changes, propagate
     submission metadata and stage outputs. Preserve prediction coordinates and
     retain biological QC findings as warnings unless strict warning mode is chosen.
     Return the preparation report; do not authenticate or submit to ENA."""
@@ -445,8 +446,16 @@ def prepare(args):
     require(args.translation_table in TRANSLATION_TABLES, 'Translation table is not in the supported NCBI registry')
     if args.assembly_accession:
         require(bool(re.fullmatch(r'GC[AF]_[0-9]+\.[0-9]+', args.assembly_accession)), 'Assembly accession must be GCA_/GCF_ accession.version')
+    require(isinstance(getattr(args, 'remove_organelles', False),bool), 'remove_organelles must be a boolean')
+    remove_organelles = bool(getattr(args, 'remove_organelles', False))
+    organelle_report = (str(getattr(args, 'organelle_report', None) or Path(args.report).with_suffix('.organelles.tsv'))
+                        if remove_organelles else None)
     outputs = [args.output, args.write_locus_tag_map, args.report] + ([args.manifest] if args.manifest else [])
+    if organelle_report:
+        outputs.append(organelle_report)
     inputs = [args.input, args.locus_tag_map, args.assembly_report, args.fai]
+    if remove_organelles and getattr(args, 'organelle_metadata', None):
+        inputs.append(args.organelle_metadata)
     resolved = [Path(p).resolve() for p in outputs]
     require(len(set(resolved)) == len(resolved), 'Output paths must be distinct')
     require(not set(resolved) & {Path(p).resolve() for p in inputs if p}, 'Outputs must not overwrite inputs; use a new mapping version')
@@ -475,15 +484,25 @@ def prepare(args):
     taxonomy_source = 'explicit' if requested_taxon is not None else 'input_header' if input_species else 'not_provided'
     comments = [c for c in comments if not c.startswith('##species')]
     source_format = getattr(args, 'source_format', 'generic')
-    adapter = adapt_annevo(rows) if source_format == 'annevo' else {}
     comment_sizes = annevo_lengths(comments) if getattr(args, 'use_annevo_lengths', False) else {}
     if getattr(args, 'use_annevo_lengths', False):
         require(source_format == 'annevo' and comment_sizes, '--use-annevo-lengths requires --source-format annevo and recognized headers')
         for seq, size in comment_sizes.items():
             require(seq not in regions or regions[seq] == size, f'ANNEVO header/directive length mismatch: {seq}')
             regions[seq] = size
+    organelle_filter, excluded_assignments = None, []
+    if remove_organelles:
+        from ena_organelles import filter_rows
+        # Filter before adapting CDSs or allocating new locus tags.
+        rows, regions, comments, organelle_filter, excluded_assignments = filter_rows(rows, regions, comments, args)
+    adapter = adapt_annevo(rows) if source_format == 'annevo' else {}
     aliases, sizes, length_checks = lengths(args, regions)
+    if organelle_filter:
+        for seq, expected in organelle_filter['matched_sequence_lengths'].items():
+            require(sizes.get(aliases.get(seq,seq)) == expected, 'External/GFF length disagrees with NCBI metadata: '+seq)
     warnings, notes = [], []
+    if organelle_filter and organelle_filter['unclassified_retained_sequences']:
+        warnings.append('Organelle status is unspecified for retained primary-assembly scaffolds: '+', '.join(organelle_filter['unclassified_retained_sequences']))
     removed_comments = []
     if comment_sizes and not args.assembly_report and not args.fai:
         warnings.append('Sequence lengths came only from ANNEVO comments; confirm against the exact submitted assembly before submission.')
@@ -613,6 +632,9 @@ def prepare(args):
             require({'gene_id', 'locus_tag'} <= set(reader.fieldnames or []), 'Map requires gene_id and locus_tag columns')
             for r in reader:
                 register(r['gene_id'], r['locus_tag'])
+    # Retain tags already carried by excluded genes even without an input map.
+    for gene, tag in excluded_assignments:
+        register(gene, tag)
     owners = {}
     for fid in ordered:
         r = nodes[fid][0]
@@ -710,9 +732,14 @@ def prepare(args):
                   'Sequence/assembly association and development-environment availability',
                   'Official gff3tools or Webin validation; no submission performed'],
               'validation_scope': 'Structural preparation only; official vocabulary, sequence translations, minimum biological specifications and Webin acceptance are not validated.'}
+    if organelle_filter is not None:
+        report['organelle_filter'] = organelle_filter
     if args.strict_warnings:
         require(not warnings, '\n'.join(warnings))
     with staged_outputs(outputs) as staged:
+        if organelle_filter is not None:
+            from ena_organelles import write_exclusions
+            write_exclusions(staged[organelle_report], organelle_filter)
         with opened(staged[args.output], 'wt') as f:
             f.write('##gff-version 3\n#!insdc-gff-version 0.5.1\n')
             if species_directive is not None:

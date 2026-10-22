@@ -80,9 +80,9 @@ class PredictorModelTests(unittest.TestCase):
             g.resolve_settings({**self.settings,'no_inference':True,'predictor_model':'Insecta'})
 
     def test_annotator_version_model_description(self):
-        settings = {**self.settings, "predictor_model": "Insecta"}
+        settings = {**self.settings, 'predictor_model':'Insecta'}
         result = g.resolve_settings(settings)
-        self.assertEqual(result["description"], "Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3 Model: Insecta")
-        self.assertEqual(result["inference"], "ab initio prediction:ANNEVO:2.2.3")
+        self.assertEqual(result['description'], 'Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3 Model: Insecta')
+        self.assertEqual(result['inference'], 'ab initio prediction:ANNEVO:2.2.3')
         without_model = g.resolve_settings(self.settings)
-        self.assertEqual(without_model["description"], "Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3")
+        self.assertEqual(without_model['description'], 'Ab initio genome annotation prepared for ENA decoupled submission. Annotator: ANNEVO Version: 2.2.3')

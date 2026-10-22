@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased — Description wording
+## 0.6.0 — Optional organelle exclusion
 
-- Format the default manifest description using Annotator, Version and optional Model fields.
-- Preserve explicit custom descriptions unchanged, without appending model text.
-- Leave CDS inference, filenames and manifest NAME unchanged.
+- Add --remove-organelles with direct NCBI sequence-metadata lookup and exact-version matching.
+- Add validated caching, explicit refresh and offline JSON/JSONL metadata inputs; no new dependencies.
+- Exclude organelle features before conversion and tag allocation, with reference checks and cumulative tag reservation.
+- Add exclusion TSVs and preparation-report provenance/counts; retain unclassified primary scaffolds with warnings.
+- Support CLI, config, batch and advanced explicit-output workflows; audit-only remains descriptive.
+- Preserve the current Annotator / Version / Model description and custom-description handling.
+- All 120 offline tests pass. Full Abraxas filtering removes 50 rows / 7 genes and passes the bundled local validator; no authenticated submission performed.
+
 
 ## 0.5.6 — Predictor selection and model provenance
 
