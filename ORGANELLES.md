@@ -37,8 +37,7 @@ is rejected. No nucleotide sequences are downloaded. The request uses Python's
 standard library with a 30-second timeout per attempt and up to three attempts
 for transient network/server failures (including rate limiting). An initial
 online run needs outbound HTTPS access. There is no new Python-package, NCBI
-CLI, Java or credential dependency. Ordinary preparation without the flag makes
-no organelle metadata request.
+CLI, Java or credential dependency. Without the flag, no organelle filtering occurs. Preparation can still request the same sequence metadata when local lengths are missing; see the README for the automatic length fallback.
 
 ## Cache and refresh
 
@@ -94,7 +93,7 @@ organelle sequences. Every annotated GFF sequence must be matched before any row
 are removed. Offline metadata is not supplemented by a network request.
 
 `--organelle-metadata` and `--refresh-organelle-cache` are mutually exclusive.
-Metadata/cache options require `--remove-organelles`. Existing `--assembly-report`
+The organelle-specific metadata/cache options require `--remove-organelles`. General `--sequence-metadata`, `--sequence-cache-dir` and `--refresh-sequence-cache` options are shared with length fallback and do not require the filtering flag. Use one consistent metadata/cache path; a combined run reuses one loaded report. Existing `--assembly-report`
 still handles aliases and length checks, but is not an offline classification
 input for this release; use the JSON/JSONL option for that purpose.
 
@@ -107,7 +106,7 @@ input for this release; use the JSON/JSONL option for that purpose.
   compound classes in `ena_organelles.ORGANELLES`.
 - Match exact GenBank accession, RefSeq accession, original sequence name or
   UCSC-style alias to decoded GFF column 1. Accession versions are not stripped.
-  Existing output sequence-name mapping behaviour is unchanged.
+  Length fallback can map aliases to GenBank/RefSeq accessions; when local lengths are complete, existing mapping behavior is unchanged.
 - Do not infer organelle identity from `MT`, `chrM`, size, gene names or
   `non-nuclear` alone. NCBI records with ambiguous aliases or unknown compartment
   classes fail clearly. Unmatched annotated sequences also fail.

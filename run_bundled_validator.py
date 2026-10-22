@@ -19,5 +19,5 @@ with tempfile.TemporaryDirectory(prefix='ena-local-validator-') as tmp:
  cmd+=[str(Path(a.gff).resolve())]
  with open(a.log,'x') as log:r=subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT)
 s=Path(a.log).read_text()
-print(json.dumps({'exit_code':r.returncode,'reported_rules':dict(collections.Counter(re.findall(r'Violation of rule (CDS_LENGTH|CDS_INTRON_LENGTH|EXON_LENGTH)\b',s))),'passed_message':bool(re.search(r'The file passed validations',s)),'scope':'Bundled local gff3tools; not authenticated Webin validation or submission'},indent=2))
+print(json.dumps({'exit_code':r.returncode,'reported_rules':dict(collections.Counter(re.findall(r'Violation of rule (CDS_LENGTH|CDS_INTRON_LENGTH|EXON_LENGTH)\b',s))),'passed_message':bool(re.search(r'The file (?:has )?passed (?:all )?validations',s)),'scope':'Bundled local gff3tools; not authenticated Webin validation or submission'},indent=2))
 raise SystemExit(r.returncode)
