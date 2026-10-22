@@ -3,7 +3,7 @@
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
 Prepare existing ab initio annotations for ENA decoupled GFF3 submission. This
-README describes **tool version 0.6.0**. The scripts prepare local files; they do
+README describes **tool version 0.6.1**. The scripts prepare local files; they do
 not authenticate to ENA or submit data.
 
 By default, the converter preserves prediction coordinates and intervals while normalising
@@ -32,9 +32,8 @@ python3 ena_gffprep.py --version
 python3 -m unittest discover -s tests -q
 ```
 
-Version 0.6.0 has 120 automated tests. See [VALIDATION.md](VALIDATION.md) for their
-scope and the distinction between historical integration evidence and fresh
-Webin validation.
+The current automated suite contains 120 tests. See [VALIDATION.md](VALIDATION.md)
+for coverage, local checks and the separate Webin validation step.
 
 ## What is required for a normal preparation?
 
@@ -252,9 +251,14 @@ inference or add a new per-feature model attribute.
 Avoid filename/name overrides if you want the standard pattern. Predictor case
 is preserved, so `ANNEVO` and `annevo` produce different label spelling. Unsafe
 filename characters, such as spaces or slashes in a model, become underscores;
-the original model text remains in description/report metadata. Use concise
+The original model text remains in report metadata and the default description.
+An explicit `--description` is preserved as supplied. Use concise
 filename-safe model names for predictable labels. The model must be nonempty
 printable ASCII when provided; a blank setting is treated as omitted.
+
+The default description uses the resolved predictor, version and optional model;
+it does not parse a full `--inference` string to reconstruct those display fields.
+Missing fields are omitted. To use different wording, supply `--description`.
 
 Without predictor metadata (for example, generic `--no-inference` preparation),
 the fallback label is accession + input filename stem. That fallback cannot be
@@ -538,9 +542,15 @@ java -Xmx4g -XX:ActiveProcessorCount=2 \
 can read it. Keep credentials out of the repository and manifests.
 
 Follow your ENA contact's instructions for the intended environment and JAR;
-the supplied pilot command omits `-test`. Successful preparation does not check
-archive routing. A successful validation can still contain warnings; inspect the
+this example omits `-test` for that development workflow. Other builds may use
+different endpoints; confirm the intended routing before submitting. A successful validation can still contain warnings; inspect the
 detailed report. No Python command in this repository submits data.
+
+The CLI can report an HTTP 403 response as a generic authentication error.
+If submission fails after upload, inspect the full `webin-cli.report`, including
+the server receipt in the exception. An account acknowledgement requirement,
+such as incomplete ABS acknowledgement, can be more specific than the displayed
+password message. Do not infer a credential or GFF problem from that summary alone.
 
 ## Additional GFF helpers
 

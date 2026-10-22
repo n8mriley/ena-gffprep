@@ -11,7 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = '0.6.0'
+VERSION = '0.6.1'
 
 def check(condition, message):
     """Raise ValueError with message when condition is false."""

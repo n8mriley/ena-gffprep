@@ -187,12 +187,14 @@ The normal config < CLI < nonblank-row precedence applies. A shared cache can
 serve many assemblies; each row must supply metadata for its own assembly if
 using offline files. Audit-only mode does not accept organelle filtering.
 
-## Verification scope
+## Validation scope
 
-Automated tests use synthetic metadata and mocked network responses, so the test
-suite remains offline. Real-data preparation additionally exercises an NCBI
-response for the supplied Abraxas annotation. No request uses Webin credentials,
-and metadata retrieval never submits anything to ENA.
+The automated tests use synthetic metadata and mocked network responses, so the
+suite runs offline. Metadata matching checks assembly versions, sequence aliases
+and available lengths; it does not prove sequence identity or biological
+classification. Validate each prepared GFF with the intended Webin build.
+See [VALIDATION.md](VALIDATION.md) for the current verification scope.
+Organelle lookup does not use Webin credentials or submit data.
 
 NCBI references:
 

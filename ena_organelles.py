@@ -96,7 +96,7 @@ def validate_records(records, accession):
 
 def request_json(url):
     """Fetch one HTTPS page with a 30-second timeout and three bounded attempts."""
-    request = Request(url, headers={'Accept':'application/json', 'User-Agent':'ena-gffprep/0.6.0'})
+    request = Request(url, headers={'Accept':'application/json', 'User-Agent':'ena-gffprep/0.6.1'})
     for attempt in range(3):
         try:
             with urlopen(request, timeout=30) as response:
