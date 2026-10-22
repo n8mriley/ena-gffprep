@@ -2,9 +2,10 @@
 
 ## 0.7.0
 
+- Reorganize documentation around the general workflow, consolidate repeated guidance and add multi-annotator examples.
+
 - Fall back to exact-assembly NCBI sequence lengths when local lengths are missing; share metadata/cache with organelle filtering.
 - Add offline sequence metadata, shared cache/refresh options and a switch to disable length fallback; record lookup hashes and alias mappings.
-
 - Detect supported source/dialect signatures from file contents, separately from pipeline provenance.
 - Add Tiberius, mixed Tiberius/TransDecoder, Carbon-A, OrionGeno GTF, Helixer and BRAKER-compatible normalization.
 - Preserve isoforms, source fields, coordinates, scores, CDS phases and existing evidence; reject ambiguous CDS product grouping.
@@ -18,7 +19,6 @@
 - Focus validation documentation and verification metadata on the current test suite and supported checks.
 - Remove nested verification history and dataset-specific test narratives.
 - Clarify custom descriptions, unversioned ANNEVO headers, organelle exclusions and locus-tag reservations.
-- Remove the packaged installation and repository administration guide.
 - Update the software version; annotation preparation behaviour is unchanged.
 
 ## 0.6.0 — Optional organelle exclusion

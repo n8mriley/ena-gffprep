@@ -7,16 +7,9 @@
     "python_version": "3.12.14",
     "network_required": false
   },
-  "annevo_compatibility": {
-    "baseline": "0.6.1",
-    "decompressed_gff": "identical",
-    "locus_tag_map": "identical",
-    "manifest": "identical",
-    "gzip_headers": "now deterministic"
-  },
   "bundled_local_validator": {
     "run": true,
-    "scope": "Local rules only; some checks used synthetic bounds. Five non-BRAKER examples passed; BRAKER retains six short-CDS evidence errors.",
+    "scope": "Local checks only; some used synthetic bounds. They do not establish authenticated Webin or archive acceptance.",
     "jar_sha256": "05c7070b4f1aa646eb19f34db844360d9d50155f1244b2b4377496efa1edfb72"
   },
   "authenticated_webin_validation_run": false,

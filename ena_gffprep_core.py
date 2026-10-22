@@ -143,10 +143,12 @@ def scalar(a, key, default=None):
     return a[key][0]
 
 def parse(path, flexible=False):
-    """Parse supported GFF3 into (rows, sequence_regions, comments).
+    """Parse supported GFF3, or quoted GTF in flexible mode, into rows/regions/comments.
     
     Each row retains columns, decoded attribute lists, integer coordinates and its
-    physical input line number. Reject malformed records and embedded FASTA.
+    physical input line number. Flexible mode constructs GTF relationships and
+    retains original numeric non-CDS phases while normalizing them.
+    Reject malformed records and embedded sequence sections.
     This parser alone does not establish biological validity or sequence identity."""
     rows, regions, comments = [], {}, []
     with opened(path) as f:
