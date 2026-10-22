@@ -1,201 +1,117 @@
-# Remove organelle predictions
+# Excluding organelle annotations
 
-`--remove-organelles` excludes all annotation features on sequences explicitly
-classified by NCBI as organelles for the exact assembly accession/version.
-It is intended for predictions made by nuclear annotation models on assemblies
-that also contain mitochondria or plastids. It does not change the assembly,
-reannotate organelles or substitute another translation table.
+Use `--remove-organelles` when predictions made with a nuclear annotation model
+should be excluded from organelle sequences. It removes all annotated feature
+rows on those sequences; it does not change the assembly, reannotate organelles
+or substitute another genetic code.
 
-## Online use
+Add the flag to an ordinary preparation command:
 
 ```bash
 python3 ena_gffprep.py \
-  --input /path/to/Abraxas_sylvata.GCA_964187985.1.annevo_2.2.1.Insecta.gff \
-  --assembly-accession GCA_964187985.1 \
+  --input annotation.gff3 \
+  --assembly-accession GCA_123456789.1 \
   --locus-tag-prefix YOURPREFIX \
-  --predictor ANNEVO \
-  --predictor-version 2.2.1 \
-  --predictor-model Insecta \
-  --remove-organelles \
-  --output-dir /path/to/new-filtered-package
+  --remove-organelles
 ```
 
-Use the real registered prefix. The existing automatic label/filename convention
-is unchanged; the flag does not append a filtering suffix. Choose a distinct
-`--label` or `--output-dir` if an earlier package already exists. The model is
-optional. Normal source-format, provenance and length requirements still apply.
+The normal format and provenance requirements still apply. Replace the example
+accession/prefix and add predictor or inference options when required. The flag
+does not add a filtering suffix to the output name: choose a new output directory
+or label if an earlier package exists.
 
-The tool queries:
+## Metadata and matching
 
-```text
-https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/ACCESSION/sequence_reports
-```
+The exact assembly's NCBI Datasets sequence report is loaded from the shared
+cache, fetched over HTTPS or read from a complete offline report. It is also
+reused if sequence-length fallback needs it. See the README's
+[sequence metadata section](README.md#sequence-lengths-and-ncbi-metadata) for
+cache locations, refresh, offline formats and general options.
 
-All pages are retrieved and counts checked when the API provides a total. A
-response for a different accession/version, including a paired GCF/GCA assembly,
-is rejected. No nucleotide sequences are downloaded. The request uses Python's
-standard library with a 30-second timeout per attempt and up to three attempts
-for transient network/server failures (including rate limiting). An initial
-online run needs outbound HTTPS access. There is no new Python-package, NCBI
-CLI, Java or credential dependency. Without the flag, no organelle filtering occurs. Preparation can still request the same sequence metadata when local lengths are missing; see the README for the automatic length fallback.
+The general `--sequence-metadata`, `--sequence-cache-dir` and
+`--refresh-sequence-cache` options work with filtering. The filtering-specific
+`--organelle-metadata`, `--organelle-cache-dir` and `--refresh-organelle-cache`
+names remain supported and require the removal flag. General and specific paths
+must agree when both are supplied. Offline metadata and refresh are incompatible.
 
-## Cache and refresh
+All annotated sequence IDs must match exactly one metadata record using its
+GenBank accession, RefSeq accession, original name or UCSC-style alias. Accession
+versions are not stripped. Wrong assembly versions, unmatched/ambiguous aliases,
+conflicting declared lengths and retained external-length disagreements fail.
+A paired GCA/GCF accession is not silently substituted for the requested one.
 
-Downloaded metadata is cached as `ACCESSION.json` under:
+## Classification policy
 
-```text
-$XDG_CACHE_HOME/ena-gffprep/ncbi-sequences/
-```
+Classification uses `assigned_molecule_location_type` (or camelCase equivalent),
+not sequence names, length, gene content or `non-nuclear` alone.
 
-If XDG_CACHE_HOME is unset, `~/.cache` is used. Use an absolute XDG cache root or
-set an explicit directory:
+Supported organelle locations include mitochondrion, chloroplast, plastid,
+chromoplast, apicoplast, cyanelle, leucoplast, proplastid, kinetoplast,
+hydrogenosome, chromatophore and nucleomorph. Supported compound forms are
+listed in `ena_organelles.ORGANELLES`.
 
-```bash
---remove-organelles --organelle-cache-dir /path/to/ncbi-cache
-```
+An unplaced/unlocalized scaffold in Primary Assembly with an unspecified
+location is retained and reported as unclassified, with a warning. Other
+missing or unsupported compartment classifications fail. NCBI misclassification
+or absent labels can therefore leave organelles undetected; the filter does not
+certify every retained sequence as nuclear.
 
-Only complete validated responses are published into the cache. Matching cached
-metadata is reused without a network call and has no automatic expiry. The report
-records source, retrieval time, file hash and assembly version. Force refresh:
+An organelle present in the assembly but absent from the annotation is reported,
+but contributes no removed records. A valid report with no annotated organelles
+produces a successful no-op.
 
-```bash
---remove-organelles --refresh-organelle-cache
-```
+## Feature relationships and locus tags
 
-A refresh failure stops preparation; it does not silently fall back to old data.
-A corrupt cache also stops preparation; refresh it explicitly or supply a valid
-local metadata file. Metadata can change without a new sequence version, so
-review the cache provenance when deciding to refresh.
+Parsing and relationship construction run first. Filtering then precedes the
+source adapter, feature normalization and new tag allocation. Fundamentally
+malformed input can still fail before exclusion.
 
-## Offline metadata
+The filter removes corresponding output sequence declarations and positional
+comments. Global provenance and selected global ontology/species directives are
+retained. It refuses feature IDs shared across the retained/excluded boundary,
+retained Parent/Derives_from links into excluded features and removal of every
+annotation feature.
 
-```bash
---remove-organelles --organelle-metadata /path/to/sequence_report.jsonl
-```
+Excluded genes receive no new tags. On updates, supply the complete previous
+locus-tag map: all historical entries remain reserved, including removed genes.
+Tags already present on excluded features are also reserved when gene ancestry
+can be resolved safely. See [LOCUS_TAGS.md](LOCUS_TAGS.md).
 
-Accepted formats are a complete NCBI sequence-report API JSON response, a
-complete Datasets `sequence_report.jsonl`, or this tool's cached JSON file.
-Snake_case API fields and camelCase Datasets fields are accepted. Use the
-sequence report, not the assembly-level summary. Each sequence record must carry
-the exact assembly accession/version and a positive integer length.
+## Reports
 
-For example, if the optional NCBI Datasets CLI is available on another machine:
+Normal package mode adds `organelle_exclusions.tsv`:
 
-```bash
-datasets summary genome accession GCA_964187985.1 \
-  --report sequence --as-json-lines > sequence_report.jsonl
-```
+| Column | Meaning |
+| --- | --- |
+| `seqid` | Original GFF sequence ID. |
+| `ncbi_sequence` | Matched metadata record's canonical accession, preferring GenBank. |
+| `location` | Organelle classification. |
+| `feature_rows` | Number of removed rows on that sequence. |
+| `genes` | Number of removed logical genes. |
 
-Transfer that complete file to the preparation machine. Partial API pages with
-continuation tokens or inconsistent counts are rejected. JSONL does not contain
-a completeness marker: supply the complete report, not a hand-filtered list of
-organelle sequences. Every annotated GFF sequence must be matched before any rows
-are removed. Offline metadata is not supplemented by a network request.
+The file always has a header. A header-only file means no annotated organelle
+features were removed, not necessarily that the assembly lacks organelles.
 
-`--organelle-metadata` and `--refresh-organelle-cache` are mutually exclusive.
-The organelle-specific metadata/cache options require `--remove-organelles`. General `--sequence-metadata`, `--sequence-cache-dir` and `--refresh-sequence-cache` options are shared with length fallback and do not require the filtering flag. Use one consistent metadata/cache path; a combined run reuses one loaded report. Existing `--assembly-report`
-still handles aliases and length checks, but is not an offline classification
-input for this release; use the JSON/JSONL option for that purpose.
+The `organelle_filter` section of `preparation.json` records metadata provenance,
+matched aliases/lengths, removed counts, excluded gene IDs, all classified
+organelles in the assembly and retained unclassified scaffolds. The text summary
+includes removal totals. Explicit-output mode writes
+`REPORT_STEM.organelles.tsv` beside the JSON report instead.
 
-## Classification and matching policy
-
-- Use NCBI's `assigned_molecule_location_type` / `assignedMoleculeLocationType`.
-  Explicit supported classes include mitochondrion, chloroplast, plastid,
-  chromoplast, apicoplast, cyanelle, leucoplast, proplastid, kinetoplast,
-  hydrogenosome, chromatophore and nucleomorph, plus the explicitly listed
-  compound classes in `ena_organelles.ORGANELLES`.
-- Match exact GenBank accession, RefSeq accession, original sequence name or
-  UCSC-style alias to decoded GFF column 1. Accession versions are not stripped.
-  Length fallback can map aliases to GenBank/RefSeq accessions; when local lengths are complete, existing mapping behavior is unchanged.
-- Do not infer organelle identity from `MT`, `chrM`, size, gene names or
-  `non-nuclear` alone. NCBI records with ambiguous aliases or unknown compartment
-  classes fail clearly. Unmatched annotated sequences also fail.
-- An unplaced/unlocalized scaffold explicitly assigned to Primary Assembly may
-  lack a molecule location. It is retained with a warning and listed as
-  unclassified; the tool does not certify that it is nuclear. Other missing
-  classifications fail. Misclassified or unlabelled organelle sequence cannot
-  be discovered by this metadata-only filter.
-- GFF sequence declarations and retained external lengths must agree with NCBI
-  lengths. Matching names/lengths still does not prove nucleotide identity.
-- Organelle records present in the assembly but absent from the input annotation
-  are reported separately and do not count as removed features. A valid report
-  containing no annotated organelles produces a successful no-op.
-
-## Annotation and locus-tag handling
-
-All feature rows on matched organelle sequences are excluded, including genes,
-transcripts, CDSs, exons and RNA features. Filtering precedes the source adapter,
-feature-attribute conversion and new locus-tag allocation. Normal GFF parsing
-still runs first, so fundamentally malformed input remains an error even on a
-sequence that would subsequently be excluded.
-
-Corresponding sequence-region declarations are omitted from the output.
-Position-dependent input comments are discarded; recognised global provenance
-and selected global ontology/species directives are retained. Dropped comment
-counts are recorded. Retained Parent or Derives_from links into excluded
-features, and feature IDs shared across the retained/excluded boundary, fail
-rather than produce a broken annotation. If filtering removes all features,
-preparation fails and no package is published.
-
-On updates, supply the complete previous `--locus-tag-map`. Its historical entries
-remain reserved, including excluded genes. Existing tags found on excluded
-features are also reserved by resolving their gene ancestry, even without a map.
-An ambiguous tagged ancestry or conflicting assignment fails. New untagged
-excluded genes do not receive tags. Do not omit a historical map merely because
-you are now removing organelle predictions.
-
-The manifest PRIMARY_ID continues to identify the full assembly. DESCRIPTION
-uses the current Annotator / Version / Model wording; filtering details are in
-the preparation and exclusion reports rather than automatically changing NAME.
-
-## Outputs
-
-Normal package mode adds `organelle_exclusions.tsv` with these columns:
-
-```text
-seqid    ncbi_sequence    location    feature_rows    genes
-```
-
-The actual separators are tabs. The file always has a header, including when no
-annotated organelles were removed. `seqid` is the original matched GFF ID, while
-`ncbi_sequence` is the report's preferred GenBank accession (or available alias).
-
-`preparation.json` adds `organelle_filter`, containing:
-
-- Metadata source (`ncbi_api`, `cache` or `offline_file`), path, SHA-256, retrieval
-  timestamp when available and source URLs when available.
-- Original, retained and removed feature counts, removed logical gene counts
-  and removed counts by feature type.
-- Matched sequence aliases and retained metadata lengths.
-- Removed annotated organelles, all organelles identified in the assembly,
-  excluded gene IDs and unclassified retained scaffold IDs.
-
-`preparation.txt` includes removed feature/gene counts. Explicit-output mode
-writes the TSV beside the requested JSON report as `REPORT_STEM.organelles.tsv`.
-The sidecar participates in output staging and overwrite checks. Neither mode
-creates a separate excluded GFF file. Cached downloads can remain after a failed
-preparation for reuse, but incomplete output packages are not published.
+The manifest continues to identify the full assembly. Filtering does not change
+the default NAME/DESCRIPTION. Cache files can remain after a failed preparation,
+but incomplete output packages are not published. No Webin credentials are used.
 
 ## Config, batch and audit
 
-JSON keys are `remove_organelles` (boolean), `organelle_metadata`,
-`organelle_cache_dir` and `refresh_organelle_cache` (boolean). File paths resolve
-relative to the configuration file. The same names are accepted batch columns;
-TSV booleans use `true` / `false`, and row paths resolve relative to the TSV.
-The normal config < CLI < nonblank-row precedence applies. A shared cache can
-serve many assemblies; each row must supply metadata for its own assembly if
-using offline files. Audit-only mode does not accept organelle filtering.
+Use the same option names with underscores in JSON or TSV, for example
+`remove_organelles`, `sequence_metadata` and `sequence_cache_dir`. Boolean values
+are `true`/`false`; paths follow the normal config/row rules. Each offline report
+must match that job's assembly. Audit mode does not filter or fetch metadata.
 
-## Validation scope
+Validate each prepared annotation using [VALIDATION.md](VALIDATION.md).
 
-The automated tests use synthetic metadata and mocked network responses, so the
-suite runs offline. Metadata matching checks assembly versions, sequence aliases
-and available lengths; it does not prove sequence identity or biological
-classification. Validate each prepared GFF with the intended Webin build.
-See [VALIDATION.md](VALIDATION.md) for the current verification scope.
-Organelle lookup does not use Webin credentials or submit data.
+References:
 
-NCBI references:
-
-- https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/
-- https://www.ncbi.nlm.nih.gov/datasets/docs/v2/api/rest-api/
+- [NCBI genome sequence reports](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/)
+- [NCBI Datasets REST API](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/api/rest-api/)

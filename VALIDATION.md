@@ -1,68 +1,106 @@
-# Validation and test coverage
+# Validation
 
-## Automated checks
+Preparation and ENA acceptance are separate steps. Review `preparation.txt`,
+`preparation.json` and any `organelle_exclusions.tsv`, then validate the generated
+manifest with the intended Webin build. A successful preparation is not a
+submission receipt or a biological quality assessment.
 
-Run the bundled automated tests with Python's standard-library
-`unittest` runner:
+## Webin validation
+
+Change into the prepared package directory. `VALIDATE.txt` contains the command
+pattern. With credentials already exported in the environment:
+
+```bash
+java -Xmx4g -XX:ActiveProcessorCount=2 \
+  -jar /absolute/path/to/webin-cli-10.0.0-beta.jar \
+  -context annotation -manifest manifest.txt \
+  -username "$WEBIN_USERNAME" -passwordEnv WEBIN_PASSWORD \
+  -validate
+```
+
+`-passwordEnv WEBIN_PASSWORD` takes the variable's **name**, not its expanded
+value. The variable must be exported for Java to read it. Keep credentials out
+of manifests and source files. The generated GFF3 path is relative to its manifest;
+check that the referenced file exists if Webin cannot read it.
+
+Use the JAR and environment instructions supplied by ENA. This example follows
+the supplied development workflow and omits `-test`; do not assume that every
+build routes requests identically. No Python command here submits data.
+
+Read the detailed reports even after a success message. Warnings may remain.
+Short CDSs and other biological findings can require accurate evidence or review;
+do not invent products, inference, partial flags or exceptions to suppress them.
+
+If submission later fails, inspect the complete `webin-cli.report` and server
+receipt. Account acknowledgements or archive errors can appear under a generic
+authentication/password summary. Local GFF validation does not check every
+account or submission-service requirement.
+
+## Local validator and report review
+
+The optional bundled check extracts gff3tools from your separately supplied JAR.
+It runs local rules without authentication or archive/registry checks:
+
+```bash
+python3 run_bundled_validator.py \
+  --jar /path/to/webin-cli-10.0.0-beta.jar \
+  --gff /path/to/prepared.ena.gff3.gz \
+  --log local-validation.log
+```
+
+To associate supported diagnostic lines with features:
+
+```bash
+python3 ena_validation_review.py \
+  --gff /path/to/prepared.ena.gff3.gz \
+  --webin-report /path/to/exact-file.report \
+  --outdir webin_review
+```
+
+Use the exact GFF that generated the log, including line order. The helper
+recognizes supported diagnostic syntax, not every possible Java/Webin log format.
+It writes finding and coordinate-based review tables plus a summary. Choose new
+log/output paths. A report-review failure can leave a partial review directory;
+the prepared GFF is unchanged.
+
+`ena_add_inference.py` is an optional helper for adding explicitly supplied
+provenance to a separate copy of an already prepared file. Normal preparation
+already handles inference. Consult `--help`; the helper refuses existing CDS
+inference rather than merging it automatically:
+
+```bash
+python3 ena_add_inference.py \
+  --input prepared.ena.gff3.gz --output prepared.with-inference.gff3.gz \
+  --inference "ab initio prediction:ACTUAL_TOOL:ACTUAL_VERSION"
+```
+
+Replace the provenance with the true method/version; this is an optional separate
+workflow, not an additional required preparation step.
+
+## Automated tests and scope
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
 Tests use temporary files, synthetic annotations and mocked network responses.
-They require no NCBI connection, Webin credentials, Java or external packages.
-The compact result for this package is recorded in `release_verification.json`.
+They need no NCBI connection, Webin credentials, Java or extra Python packages.
+`release_verification.json` records the current test result.
 
-| Area | Coverage |
+| Area | Checks |
 | --- | --- |
-| GFF structure | Parsing/escaping, supported attributes, feature relationships, multipart IDs, shared leaves and coordinate bounds |
-| Predictor metadata | ANNEVO compatibility, source/dialect detection, direct-source and mixed-source inference policy, GTF relationships, CDS grouping, non-CDS phase normalization, model naming and manifest metadata |
-| Taxonomy and genetic code | Optional taxonomy, conflict checks, supported table identifiers and preservation of existing per-CDS tables |
-| Locus tags | Allocation, stable assignments, collisions, alphanumeric suffixes, propagation and reserved historical tags |
-| Organelle filtering | Exact-assembly metadata, aliases, excluded records, references, retained unclassified scaffolds, tag reservation and reports |
-| Length fallback | Source precedence, exact-assembly matching, aliases, local/NCBI disagreements, bounds, offline data, disabled lookup and sharing with organelle removal |
-| Metadata transport | JSON/JSONL input, pagination, response completeness, cache reuse/refresh and network failure handling |
-| Workflows | Configuration, batch handling, audit mode, output protection and package publication |
-| Diagnostics | Supported validator-log mapping and coordinate-based advisory checks |
+| Input formats | Parsing, escaping, GTF relationships, source detection, CDS grouping, isoforms, phase normalization and existing-format compatibility. |
+| Provenance/metadata | Direct-source and explicit inference policies, conflicts, model naming, descriptions, optional taxonomy and genetic-code preservation. |
+| Structure | Parent graphs, single-parent output, multipart IDs, shared leaves, coordinate bounds and advisory CDS arithmetic. |
+| Locus tags | Stable allocation, collisions, suffix syntax, propagation and historical reservations. |
+| NCBI metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, pagination, caching/refresh, failure handling and shared filtering lookups. |
+| Filtering/workflows | Organelle exclusions, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
+| Diagnostics | Supported validator-log associations and review tables. |
 
-## Validate a prepared annotation
-
-Preparation performs local structural and metadata checks. Review
-`preparation.txt`, `preparation.json` and, if filtering was enabled,
-`organelle_exclusions.tsv`. Then follow `VALIDATE.txt` or the README to run the
-intended Webin build against the generated manifest.
-
-The optional `run_bundled_validator.py` helper runs the bundled local GFF
-validator. It does not perform the complete authenticated Webin workflow.
-Warnings may remain even when Webin reports successful validation. Review the
-detailed GFF report rather than treating a success message as biological proof.
-
-If submission fails, inspect the full `webin-cli.report` and server receipt.
-Authentication, account acknowledgements and archive processing are separate
-from local preparation and annotation validation.
-
-## Limits of the checks
-
-The test suite does not establish nucleotide identity with the archived assembly,
+Local checks do not establish nucleotide identity with the archived assembly,
 translation correctness, expression, biological partiality, all controlled
-vocabularies, prefix registration, account permissions or final archive acceptance.
-The organelle filter relies on NCBI metadata; unlabelled or misclassified sequences
-can remain. See [ORGANELLES.md](ORGANELLES.md) and the README for supported scope.
-
-A passing local suite is not a submission receipt. This package does
-not claim authenticated Webin validation or submission.
-
-## Cross-format verification
-
-The supplied annotation examples were exercised independently; they are not
-biological comparisons between genomes. ANNEVO output was compared against
-0.6.1: decompressed GFF, locus-tag map and manifest matched exactly. Gzip header
-metadata is now deterministic, so compressed bytes can differ from older builds.
-
-Local validator checks use the supplied development JAR. Where true sequence
-lengths were unavailable, temporary synthetic bounds were used only to exercise
-conversion and local rules. Those outputs are not submission packages. No example
-is evidence of archive sequence association or authenticated Webin acceptance.
-Short-CDS evidence requirements can remain after a structurally correct conversion,
-especially when choosing `--no-inference`. Do not invent evidence or partial flags
-to suppress them.
+vocabularies, prefix ownership or archive acceptance. Metadata-only filtering
+can miss unlabelled or misclassified organelles. Synthetic fixtures and local
+validator checks, including checks using synthetic bounds, do not certify a real
+submission. Use true assembly metadata and the intended Webin workflow for each
+prepared annotation.

@@ -30,8 +30,9 @@ def detect_source(path):
     """Return (predictor, version) from recognised leading comments.
     
     ANNEVO headers may identify the predictor without specifying a version.
-    Only ANNEVO is detected automatically. Conflicting versions raise ValueError;
-    filenames are never treated as evidence of prediction provenance."""
+    This compatibility helper detects ANNEVO only. The CLI uses ena_formats.detect
+    for multi-tool recognition. Conflicting versions raise ValueError; filenames
+    are never treated as evidence of prediction provenance."""
     versions = set()
     recognised = False
     with open_text(path) as handle:

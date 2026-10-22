@@ -72,8 +72,8 @@ def gtf_identity(a, feature, line):
     """Construct explicit GFF3 relationships from GTF gene/transcript identifiers.
 
     Missing containers are not fabricated: normal graph checks require them.
-    Line-based leaf IDs are deterministic for the exact input, and preserved in
-    the preparation report through its source checksum.
+    Line-based leaf IDs are deterministic for the exact input; the report records
+    the source checksum so that input-dependent identifiers can be reproduced.
     """
     def one(key):
         vals = a.get(key, [])

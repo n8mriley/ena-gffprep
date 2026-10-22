@@ -1,10 +1,46 @@
-# GFF preparation examples
+# Examples
 
-All accessions, prefixes and annotations are placeholders or synthetic fixtures.
-Do not submit them.
+The accession numbers, prefixes and annotation paths in this directory are
+placeholders. `pilot.gff3` is synthetic. Do not submit these examples.
 
-- `annotations.tsv`: edit paths, assembly accessions, optional taxa and registered prefixes. Paths resolve relative to this TSV; blank cells inherit defaults.
-- `nuclear_defaults.json`: shared nuclear-code fallback and output root. Paths resolve relative to the JSON file.
-- `pilot.gff3`: synthetic structural GFF3 fixture. Use explicit `--no-inference` because it has no real prediction provenance, and supply your preparation metadata.
+| File | Use |
+| --- | --- |
+| `pilot.gff3` | Small structural fixture with known local bounds and no real prediction provenance. |
+| `nuclear_defaults.json` | Shared translation-table fallback and output root; paths are relative to the JSON file. |
+| `annotations.tsv` | Multi-annotator batch template; replace paths, accessions and prefixes before use. |
 
-The optional `.fai` input is a sequence-name/length index used for GFF bounds and headers, not a sequence-preparation workflow.
+## Run the synthetic fixture
+
+From the toolkit directory, choose a new output directory:
+
+```bash
+python3 ena_gffprep.py \
+  --input examples/pilot.gff3 \
+  --assembly-accession GCA_123456789.1 \
+  --locus-tag-prefix EXAMPLE \
+  --no-inference --no-ncbi-lengths \
+  --output-dir example-preparation
+```
+
+The explicit no-inference policy avoids assigning invented provenance to this
+fixture. Its sequence-region declaration supplies bounds, so no lookup is needed.
+The accession/prefix are illustrative, not verified registration or archive links.
+
+## Adapt the batch template
+
+The table includes direct-source and pipeline examples. Replace each `ACTUAL_VERSION`
+with the version used. Empty cells inherit config/CLI defaults; they do not clear
+a default. Keep predictor/model defaults out of shared settings when jobs differ.
+Each job needs its own registered prefix or a deliberately coordinated allocation.
+
+```bash
+python3 ena_gffprep.py \
+  --config examples/nuclear_defaults.json \
+  --batch examples/annotations.tsv \
+  --batch-summary example-batch-summary.json
+```
+
+Paths in row cells are relative to the TSV unless absolute. Add optional columns
+such as `fai`, `locus_tag_map`, `remove_organelles` or `sequence_metadata` as needed.
+TSV booleans use `true`/`false`. See the [main guide](../README.md#configuration-and-batches)
+for precedence and batch restrictions.

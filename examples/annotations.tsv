@@ -1,3 +1,4 @@
-input	fai	assembly_accession	taxon_id	locus_tag_prefix	label
-/path/to/sample1.annevo.gff	/path/to/sample1.fa.fai	GCA_111111111.1	12345	YOURPREFIX1	sample1.annevo
-/path/to/sample2.annevo.gff	/path/to/sample2.fa.fai	GCA_222222222.1	67890	YOURPREFIX2	sample2.annevo
+no_inference	input	assembly_accession	locus_tag_prefix	predictor	predictor_model	predictor_version
+	/path/to/helixer.gff3	GCA_111111111.1	YOURPREFIX1	Helixer	ACTUAL_MODEL	ACTUAL_VERSION
+	/path/to/tiberius.gff3	GCA_222222222.1	YOURPREFIX2	Tiberius		ACTUAL_VERSION
+true	/path/to/braker.gff3	GCA_333333333.1	YOURPREFIX3	BRAKER		ACTUAL_VERSION
