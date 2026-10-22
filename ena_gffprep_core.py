@@ -19,7 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-VERSION = '0.6.0'
+VERSION = '0.6.1'
 GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',

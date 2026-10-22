@@ -1,54 +1,52 @@
-# Release verification — 0.6.0
+# Validation and test coverage
 
-## Current checks
+## Automated checks
 
-All 120 automated test methods pass using Python standard-library unittest.
-Tests never contact NCBI or Webin. Run:
+The current suite contains **120 tests**, run with Python's standard-library
+`unittest` runner:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Existing GFF conversion, inference, metadata, locus-tag and output-publication
-checks remain. New tests cover mitochondrial/plastid removal, exact versioned
-alias matching, no-organelle/no-annotation cases, unmatched and ambiguous IDs,
-unknown/missing classifications, incomplete JSON/JSONL, length conflicts,
-cross-boundary references, all-features removal, reserved tags, no-flag parity,
-cache reuse/refresh, pagination, transient/permanent network failures, corrupt
-cache, config/batch handling, package failure and exclusion sidecars.
+Tests use temporary files, synthetic annotations and mocked network responses.
+They require no NCBI connection, Webin credentials, Java or external packages.
+The compact result for this package is recorded in `release_verification.json`.
 
-The latest exact Annotator / Version / Model description and unchanged CDS
-inference are also covered.
+| Area | Coverage |
+| --- | --- |
+| GFF structure | Parsing/escaping, supported attributes, feature relationships, multipart IDs, shared leaves and coordinate bounds |
+| Predictor metadata | ANNEVO detection and adaptation, provenance conflicts, model naming, manifest text and custom descriptions |
+| Taxonomy and genetic code | Optional taxonomy, conflict checks, supported table identifiers and preservation of existing per-CDS tables |
+| Locus tags | Allocation, stable assignments, collisions, alphanumeric suffixes, propagation and reserved historical tags |
+| Organelle filtering | Exact-assembly metadata, aliases, excluded records, references, retained unclassified scaffolds, tag reservation and reports |
+| Metadata transport | JSON/JSONL input, pagination, response completeness, cache reuse/refresh and network failure handling |
+| Workflows | Configuration, batch handling, audit mode, output protection and package publication |
+| Diagnostics | Supported validator-log mapping and coordinate-based advisory checks |
 
-## Real-data integration
+## Validate a prepared annotation
 
-The supplied Abraxas sylvata ANNEVO 2.2.1 annotation was prepared using the live
-NCBI sequence report for GCA_964187985.1, model Insecta and a local test prefix.
-The metadata contained 60 sequence records and classified OZ076621.1
-(scaffold_MT_1) as Mitochondrion. All annotated sequences matched.
+Preparation performs local structural and metadata checks. Review
+`preparation.txt`, `preparation.json` and, if filtering was enabled,
+`organelle_exclusions.tsv`. Then follow `VALIDATE.txt` or the README to run the
+intended Webin build against the generated manifest.
 
-- Input: 263,764 feature rows and 16,528 genes.
-- Removed: 50 rows (7 genes, 7 mRNAs, 18 exons, 18 CDS intervals).
-- Retained: 263,714 feature rows and 16,521 genes.
-- Output sequence-region declarations omit OZ076621.1.
-- All retained feature rows exactly match the earlier unfiltered output, including tags.
-- A second offline preparation with the previous cumulative map reserves all seven excluded gene tags.
+The optional `run_bundled_validator.py` helper runs the bundled local GFF
+validator. It does not perform the complete authenticated Webin workflow.
+Warnings may remain even when Webin reports successful validation. Review the
+detailed GFF report rather than treating a success message as biological proof.
 
-The resulting file passed local gff3tools validation using the supplied
-webin-cli-10.0.0-beta.jar: exit 0, no errors, 6,945 EXON_LENGTH warnings and
-32 CDS_INTRON_LENGTH warnings (6,977 total). No validation rules were disabled.
-This is bundled local validation, not authenticated Webin validation, submission
-or archive-processing acceptance.
+If submission fails, inspect the full `webin-cli.report` and server receipt.
+Authentication, account acknowledgements and archive processing are separate
+from local preparation and annotation validation.
 
-Earlier unfiltered user-provided validation results and older integration
-results remain historical evidence, not new results for every release.
+## Limits of the checks
 
-## Limits
+The test suite does not establish nucleotide identity with the archived assembly,
+translation correctness, expression, biological partiality, all controlled
+vocabularies, prefix registration, account permissions or final archive acceptance.
+The organelle filter relies on NCBI metadata; unlabelled or misclassified sequences
+can remain. See [ORGANELLES.md](ORGANELLES.md) and the README for supported scope.
 
-The filter uses metadata, not nucleotide comparison or organelle discovery.
-Unlabelled organelles and misclassified sequences can remain. Primary-assembly
-unplaced/unlocalized scaffolds lacking a compartment are explicitly reported as
-unclassified and retained with a warning. Other uncertain classifications fail.
-Offline JSONL completeness depends on the supplied file; all annotated sequence
-IDs must match. No registered prefix/account/assembly-availability checks or
-network submission are performed by preparation. See ORGANELLES.md for policy.
+A passing local suite is not a submission receipt. This documentation update does
+not claim a new authenticated Webin validation or submission.

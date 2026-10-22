@@ -35,9 +35,9 @@ python ena_gffprep.py \
   --width 5
 ```
 
-Use the actual predictor and version; recognised ANNEVO headers supply these
-automatically. This example generates `WSITEST_00001`, `WSITEST_00002`, etc.
-The existing six-digit default remains unchanged. Width is a minimum: allocation
+Use the actual predictor and version. A recognised versioned ANNEVO header
+can supply them automatically; an unversioned header does not provide a version. This example generates `WSITEST_00001`, `WSITEST_00002`, etc.
+The default numeric width is six digits. Width is a minimum: allocation
 expands if the number outgrows it rather than truncating or wrapping.
 
 Do not treat five letters or five suffix digits as universal requirements: those
@@ -76,7 +76,7 @@ all historical reservations. Withholding the historical map removes the tool's
 ability to protect those historical tags. Gene matching uses stable IDs, not
 coordinates or sequence similarity: changed gene IDs require a curated mapping.
 
-Prepare the whole assembly annotation together. Batch mode still rejects repeated
+Prepare the whole assembly annotation together. Batch mode rejects repeated
 prefixes because independent allocations could collide; do not run separate
 chromosome jobs with the same prefix and independent maps.
 
@@ -84,7 +84,7 @@ chromosome jobs with the same prefix and independent maps.
 
 The gene and its supported transcript/RNA, CDS, exon, intron and UTR descendants
 receive the same tag. `repeat_region` never receives an automatically added tag;
-an input repeat_region already carrying one is rejected for explicit correction.
+a retained input repeat_region already carrying one is rejected for explicit correction.
 Other specialist features retain the existing gene-hierarchy policy. Recognising
 an RNA component for locus-tag propagation does not guarantee that its feature
 term is accepted by the intended Webin build. Orphan RNA features
@@ -93,10 +93,18 @@ still require a gene hierarchy or an appropriate source adapter.
 One tag cannot be assigned to different gene IDs. Existing input attributes and
 the supplied mapping must agree. The preparation report records allocation
 policy under `submission_metadata.locus_tag_policy`. Validate the resulting file
-with your intended Webin build: this release's automated tests do not constitute
-a new authenticated ENA validation or submission.
+with your intended Webin build; local preparation does not establish archive
+acceptance.
 
-Sources checked 21 October 2026:
+Reference documentation:
 
 - https://www.ddbj.nig.ac.jp/ddbj/locus_tag-e.html
 - https://ena-docs.readthedocs.io/en/latest/submit/study/interactive.html
+
+## Organelle filtering
+
+With `--remove-organelles`, excluded genes receive no new tags. Tags from the
+complete supplied mapping remain reserved, including genes now excluded. Existing
+tags on excluded features are also reserved when their gene ancestry can be
+resolved safely. Keep the cumulative map across filtered and unfiltered builds.
+See [ORGANELLES.md](ORGANELLES.md) for matching and exclusion policy.
