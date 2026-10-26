@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Replace source-selected transformations with one source-independent graph normalizer; keep parsing and provenance separate.
+- Add input-format, normalization and CDS-grouping policies; accept earlier source-format hints for compatibility.
+- Normalize unknown annotators using the same rules, preserve explicit distinct protein products, and reject ambiguous/conflicting merges.
+- Expand shared leaves before CDS grouping; retain identifier provenance and report applied structural rules.
+- Preserve valid prior annotation outputs while accepting compatible existing CDS IDs without annotator-specific naming requirements.
+- Keep organelle filtering before structural rewrites and tag allocation.
+
 ## 0.7.0
 
 - Reorganize documentation around the general workflow, consolidate repeated guidance and add multi-annotator examples.

@@ -20,7 +20,7 @@ from ena_common import (VERSION, check, input_stem, new_package, open_text, safe
 
 PATH_KEYS = {'input', 'fai', 'assembly_report', 'locus_tag_map', 'output_dir', 'out_root',
              'output', 'report', 'manifest', 'write_locus_tag_map', 'organelle_metadata', 'organelle_cache_dir', 'inference_map', 'sequence_metadata', 'sequence_cache_dir'}
-SETTING_KEYS = PATH_KEYS | {'source_format', 'assembly_accession', 'taxon_id', 'locus_tag_prefix',
+SETTING_KEYS = PATH_KEYS | {'source_format', 'input_format', 'normalization', 'cds_grouping', 'assembly_accession', 'taxon_id', 'locus_tag_prefix',
     'translation_table', 'predictor', 'predictor_version', 'predictor_model', 'inference', 'label', 'name',
     'description', 'prediction_method', 'accession_column', 'width', 'start', 'step', 'default_product',
     'no_inference', 'strict_warnings', 'use_annevo_lengths', 'remove_organelles', 'refresh_organelle_cache', 'no_ncbi_lengths', 'refresh_sequence_cache'}
@@ -89,6 +89,15 @@ def resolve_settings(settings):
     if source_format == 'auto':
         source_format = 'annevo' if (s.get('predictor') or detected or '').casefold() == 'annevo' else detection['format']
     s['source_format'] = source_format
+    # Legacy source-format hints remain accepted, but never select a normalizer.
+    # Explicit generic preserves its historical strict type/phase/CDS-group contract.
+    s.setdefault('normalization', 'strict' if settings.get('source_format') == 'generic' else 'standard')
+    s.setdefault('input_format', source_format if settings.get('source_format') in {'gtf','gff3'} else 'auto')
+    s.setdefault('cds_grouping','auto')
+    check(s['normalization'] in {'standard','strict'}, 'Use --normalization standard or strict')
+    check(s['input_format'] in {'auto','gff3','gtf'}, 'Use --input-format auto, gff3 or gtf')
+    check(s['cds_grouping'] in {'auto','single-product','preserve'}, 'Use --cds-grouping auto, single-product or preserve')
+    check(s['normalization'] != 'strict' or s['cds_grouping'] == 'auto', 'CDS grouping overrides require standard normalization')
     s['input_detection'] = detection
     if detected and detected != 'ANNEVO':
         s.setdefault('predictor', detected)
@@ -117,7 +126,7 @@ def resolve_settings(settings):
     elif s.get('no_inference'):
         check(not s.get('inference'), '--no-inference cannot be combined with --inference')
         s['inference'] = None
-    elif not s.get('inference') and source_format not in {'annevo','generic'} and settings.get('prediction_method','auto') == 'auto' and any(automatic_mapping.values()):
+    elif not s.get('inference') and source_format != 'annevo' and settings.get('prediction_method','auto') == 'auto' and any(automatic_mapping.values()):
         s['inference_by_source'] = automatic_mapping
         s['automatic_source_inference'] = True
         s['inference'] = None
@@ -273,7 +282,10 @@ def parser():
             help={'sequence_metadata':'Complete offline NCBI sequence JSON/JSONL for length fallback; also shared with organelle filtering.',
                   'sequence_cache_dir':'Shared directory for exact-assembly NCBI sequence metadata cache.',
                   'inference_map':'JSON object mapping exact column-2 sources to accurate inference strings or null; unmapped sources preserve existing evidence only.',
-                  'source_format':'auto (default), annevo, tiberius, carbon-a, oriongeno, helixer, braker, gtf, gff3, generic; generic preserves the strict legacy path.',
+                  'source_format':'Compatibility hint for earlier commands; named predictors no longer select structural adapters. Explicit generic defaults to strict normalization.',
+                  'input_format':'Attribute syntax: auto (default), gff3 or gtf.',
+                  'normalization':'Source-independent structural policy: standard (default) or strict (no type/phase/CDS-group rewrites).',
+                  'cds_grouping':'auto (default), single-product or preserve; overrides require standard normalization.',
                   'prediction_method':'auto, ab-initio, evidence-assisted or unspecified; controls default description and inference policy.',
                   'predictor_model':'Model used by the predictor; recorded in default filename, NAME and DESCRIPTION.',
                   'organelle_metadata':'Offline NCBI sequence report JSON/JSONL; requires --remove-organelles.',
@@ -310,7 +322,7 @@ def main(argv=None):
             check(settings.get('input') and settings.get('report'),'Audit requires --input and --report')
             check(Path(settings['input']).resolve()!=Path(settings['report']).resolve(),'Report cannot overwrite input')
             with core.staged_outputs([settings['report']]) as staged:
-                write_json(staged[settings['report']],core.audit(settings['input'], settings.get('source_format','auto')))
+                write_json(staged[settings['report']],core.audit(settings['input'], settings.get('source_format','auto'), settings.get('input_format', settings.get('source_format') if settings.get('source_format') in {'gtf','gff3'} else 'auto')))
             return 0
         if args.batch:
             check(not any(settings.get(k) for k in ['output','report','manifest','write_locus_tag_map']),

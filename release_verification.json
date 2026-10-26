@@ -1,21 +1,26 @@
 {
-  "toolkit_version": "0.7.0",
+  "toolkit_version": "0.8.0",
   "automated_tests": {
     "command": "python3 -m unittest discover -s tests -v",
-    "test_count": 169,
+    "test_count": 202,
     "status": "passed",
     "python_version": "3.12.14",
     "network_required": false
   },
+  "output_comparison": {
+    "baseline": "0.7.0",
+    "annotations": 7,
+    "identical_gff_content": 6,
+    "identical_manifests": 7,
+    "identical_locus_tag_maps": 7,
+    "annevo_gff_content": "identical",
+    "helixer_difference": "2959 singleton CDS IDs normalized; original IDs retained; no other fields changed"
+  },
   "bundled_local_validator": {
-    "run": true,
-    "scope": "Local checks only; some used synthetic bounds. They do not establish authenticated Webin or archive acceptance.",
+    "unknown_source_fixture": "passed",
+    "helixer_normalized_output": "passed",
+    "scope": "Local rules only; some comparisons used synthetic bounds. Not authenticated Webin acceptance.",
     "jar_sha256": "05c7070b4f1aa646eb19f34db844360d9d50155f1244b2b4377496efa1edfb72"
   },
-  "authenticated_webin_validation_run": false,
-  "ncbi_length_fallback": {
-    "live_api_lookup": "passed",
-    "end_to_end_smoke": "passed",
-    "bundled_local_validator_smoke": "passed"
-  }
+  "authenticated_webin_validation_run": false
 }

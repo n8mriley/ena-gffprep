@@ -89,7 +89,7 @@ They need no NCBI connection, Webin credentials, Java or extra Python packages.
 
 | Area | Checks |
 | --- | --- |
-| Input formats | Parsing, escaping, GTF relationships, source detection, CDS grouping, isoforms, phase normalization and existing-format compatibility. |
+| Input formats | Parsing, escaping, GTF relationships, source-independent normalization, syntax overrides, explicit grouping policies, distinct products, isoforms, phase normalization and output compatibility. |
 | Provenance/metadata | Direct-source and explicit inference policies, conflicts, model naming, descriptions, optional taxonomy and genetic-code preservation. |
 | Structure | Parent graphs, single-parent output, multipart IDs, shared leaves, coordinate bounds and advisory CDS arithmetic. |
 | Locus tags | Stable allocation, collisions, suffix syntax, propagation and historical reservations. |

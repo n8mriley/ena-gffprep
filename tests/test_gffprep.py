@@ -105,9 +105,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.count('ID=t1.CDS;Parent=t1'),2)
         self.assertIn('original_id=t1.CDS.1',out)
         self.assertIn('original_id=t1.CDS.2',out)
-    def test_annevo_rejects_ambiguous_names(self):
-        with self.assertRaisesRegex(m.Invalid,'Unexpected ANNEVO'):
-            self.runprep(source_format='annevo')
+    def test_existing_logical_id_is_source_independent(self):
+        _,_,out=self.runprep(source_format='annevo')
+        self.assertEqual(out.count('ID=c1;Parent=t1'),2)
     def test_annevo_comment_lengths(self):
         text=BASE.replace('##sequence-region seq1 1 1000','# ----- prediction on sequence number 1 (length = 1000, name = seq1) -----')
         text=text.replace('ID=c1;','ID=t1.CDS.1;',1).replace('ID=c1;','ID=t1.CDS.2;',1)
@@ -122,7 +122,7 @@ class Tests(unittest.TestCase):
     def test_annevo_changed_product_rejected(self):
         text=BASE.replace('ID=c1;','ID=t1.CDS.1;',1).replace('ID=c1;','ID=t1.CDS.2;',1)
         text=text.replace('product=test%2C protein','product=other',1)
-        with self.assertRaisesRegex(m.Invalid,'Conflicting CDS attributes'):
+        with self.assertRaisesRegex(m.Invalid,'Conflicting product.*CDS attributes'):
             self.runprep(text,source_format='annevo')
     def test_audit_phase_checks(self):
         p=self.d/'audit.gff'

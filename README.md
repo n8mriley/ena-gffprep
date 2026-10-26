@@ -3,7 +3,7 @@
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
 Prepare existing genome annotations for ENA decoupled GFF3 submission. Version
-**0.7.0** supports several annotation formats, creates a manifest and locus-tag
+**0.8.0** supports several annotation formats, creates a manifest and locus-tag
 map, and records the preparation settings. It does not run annotation software,
 authenticate with ENA or submit data.
 
@@ -52,7 +52,7 @@ python3 ena_gffprep.py \
 
 For ANNEVO, a recognized versioned header can supply predictor/version. Otherwise
 supply them explicitly, or choose an accurate `--inference` or `--no-inference`.
-In auto format mode, `--predictor ANNEVO` also selects its adapter.
+ANNEVO header and inference handling is retained, but structural normalization is now the same for every source.
 
 | Information | Requirement |
 | --- | --- |
@@ -76,46 +76,84 @@ After preparation, review the reports and [validate the generated manifest](VALI
 - Java **17+** and a separately obtained compatible Webin JAR for validation.
   Neither is required for Python preparation; the JAR is not included.
 
-## Formats and representation changes
+## Input syntax and structural normalization
 
-`--source-format auto` is the default. Detection reads headers and source-column
-signatures throughout the file, not its filename. The format selects parsing and
-normalization; `--predictor` names the pipeline for metadata. One does not
-necessarily establish the other, especially for multi-component pipelines.
+Every source now uses one graph-based normalization engine. It examines feature
+relationships, IDs and metadata; column 2 and predictor names never choose its
+transformation rules. Unknown annotators receive the same structural treatment
+as recognized ones. Source detection remains separate for provenance, model hints
+and header metadata.
 
-| `--source-format` | Behavior |
+| Option | Values / behavior |
 | --- | --- |
-| `auto` | Selects a recognized dialect. Unrecognized or ambiguous GFF3 uses `generic`. |
-| `annevo` | Groups supported numbered CDS IDs per mRNA; reads recognized sequence-length comments when enabled. Keeps the established ANNEVO inference policy. |
-| `tiberius` | Normalizes coding transcripts and CDS segment IDs; preserves isoforms and mixed Tiberius/TransDecoder sources. |
-| `carbon-a` | Applies common normalization; keeps existing grouped CDS IDs and status/confidence/incomplete-reason metadata. |
-| `oriongeno` | Supports quoted GTF-style attributes, constructs IDs/parents from gene/transcript identifiers and groups CDS segments. |
-| `helixer` | Applies common normalization. A name-only species directive is reported and omitted, or replaced by an explicit taxon URI. Model comments are hints, not software versions. |
-| `braker` | Handles the supplied BRAKER-compatible structure, component sources, codon markers and non-CDS phases. Component signatures do not prove the pipeline name/version. |
-| `gtf` | Parses supported quoted GTF and constructs explicit relationships. Gene and transcript container rows must exist. |
-| `gff3` | Requests common normalization for manually selected GFF3, useful for an unrecognized annotator. |
-| `generic` | Strict GFF3 path without source-specific normalization; expects suitable feature types and logical CDS grouping already. |
+| `--input-format FORMAT` | `auto` (default), `gff3` or `gtf`. Chooses attribute syntax, not annotator. Auto examines the actual rows; mixed GTF/GFF3 attribute syntax is rejected. |
+| `--normalization MODE` | `standard` (default) or `strict`. Standard applies shared transformations. Strict skips type/phase/CDS-group rewrites, but still expands shared leaves for single-parent output and runs structural checks. |
+| `--cds-grouping POLICY` | `auto` (default), `single-product` or `preserve`. Explicit overrides require standard normalization; see below. |
+| `--source-format HINT` | Compatibility option for earlier commands. Named annotators no longer select adapters. Explicit `gtf`/`gff3` supply a syntax default; explicit `generic` supplies a strict-normalization default. Explicit new options take precedence. |
 
-The common adapters convert coding `transcript` to `mRNA`, group compatible
-CDS segments per transcript, normalize numeric non-CDS phases to `.`, and move
-child `transcript_id` values to `original_transcript_id`. Renamed segment IDs
-remain in `original_id`, and changed phases in `original_phase`. Redundant
-identifiers must agree with the hierarchy. Conflicting products/evidence,
-referenced segment IDs and overlapping CDS products are refused rather than
-merged by assumption. Existing grouped CDS IDs are retained.
+Accepted compatibility hints remain `auto`, `annevo`, `tiberius`, `carbon-a`,
+`oriongeno`, `helixer`, `braker`, `gtf`, `gff3` and `generic`. Existing working
+commands can be retained; new commands should use the syntax/policy options.
+An automatically detected unknown source labeled generic does **not** select
+strict mode. Only an explicit generic hint supplies that compatibility default.
 
-Existing exon, intron, UTR and split-codon intervals are preserved. The converter
-does not invent exons, extend exons to cover UTRs, append stop-codon bases or
-infer biological partiality from labels such as `incomplete` or `no_stop`.
-Legal repeated CDS IDs represent intervals of one discontinuous feature.
-Shared leaves may be copied into one row group per parent; shared internal
-subtrees require review. Output rows have at most one parent.
+GFF3 and quoted GTF parsers produce the same internal graph. GTF needs explicit
+gene and transcript container rows; missing containers are not fabricated.
+Relationships are constructed from gene/transcript identifiers, with deterministic
+leaf IDs for the exact input. Arbitrary GFF2 and embedded sequence sections remain
+unsupported.
+
+In standard mode the engine:
+
+- Converts coding `transcript` features to `mRNA`.
+- Gives compatible segments one logical CDS ID, retaining renamed IDs in
+  `original_id` without discarding earlier provenance.
+- Normalizes numeric non-CDS phases to `.`, retaining `original_phase`.
+- Checks redundant gene/transcript identifiers against their ancestors and moves
+  child transcript identifiers to `original_transcript_id`.
+- Duplicates unreferenced shared leaves into single-parent features, retaining
+  their original identifiers where present. Shared internal features are refused.
+
+Coordinates, strands, scores, CDS phases, isoforms and record sources are retained.
+Exon, intron, UTR and split-codon intervals are preserved. No exons or missing
+container features are invented, no exon is extended to cover UTRs, and no
+stop-codon bases are appended. Labels such as incomplete/no_stop do not become
+biological partial flags. Filtering occurs before these transformations.
+
+### CDS grouping policies
+
+| Policy | Behavior |
+| --- | --- |
+| `auto` | Keep existing logical groups. Merge compatible, nonoverlapping uniquely identified segment rows under one mRNA; all-anonymous segment sets can receive a logical ID. Preserve groups carrying distinct explicit protein IDs. Refuse ambiguous mixtures of existing multipart groups. |
+| `single-product` | Explicitly treat compatible CDS intervals under a transcript as one product, including multiple pre-grouped sets. Conflicting protein/product/evidence metadata, overlaps and referenced segment IDs still fail. |
+| `preserve` | Keep supplied CDS IDs and grouping; explicit IDs are required. Other standard normalization still applies. |
+
+Automatic grouping assumes ordinary CDS segment rows with compatible metadata
+represent one product per coding transcript. Parent membership alone is not proof:
+sequence/strand, intervals, product/evidence attributes, references and conflicting
+custom metadata are checked. Distinct products identified by unique protein IDs
+are preserved. Use preserve when separate IDs intentionally represent separate
+products, or curate ambiguous input. Single-product is not a way to override
+biological conflicts. Per-segment `cds_type` metadata can be retained without
+preventing grouping.
+
+New grouped IDs use `TRANSCRIPT.CDS`. Existing valid logical IDs, including directly gene-parented CDSs, are retained;
+regrouping requires a coding transcript parent. Numbered `TRANSCRIPT.CDS.N` segments, including a singleton, normalize to the
+established `TRANSCRIPT.CDS` form irrespective of source. Valid ANNEVO output
+conventions are preserved without an ANNEVO transformation branch. Conversely,
+already-grouped IDs are no longer rejected just because they do not match an
+annotator-specific naming pattern.
+
+`preparation.json` records the shared engine, syntax/policies and rule counts
+under `normalization`. The old adapter field is retained as a compatibility
+summary of those counts, not as evidence of a selected source adapter. Original
+attributes and input hashes support tracing changes and reproducible reruns.
 
 ## Prediction provenance
 
 In `--prediction-method auto` mode, direct source labels **ANNEVO, Helixer,
 Tiberius, Carbon-A and OrionGeno** are treated as ab initio. In supported
-non-ANNEVO adapters, CDSs from those direct sources receive:
+non-ANNEVO provenance policies, CDSs from those direct sources receive:
 
 ```text
 ab initio prediction:TOOL[:VERSION]
@@ -127,7 +165,7 @@ inference is preserved. Combined labels such as `Tiberius,transdecoder` and
 other components receive no new inference automatically. Mixed files can
 therefore contain both automatically annotated and unchanged evidence fields.
 
-ANNEVO's adapter instead uses its detected/supplied predictor and version to
+ANNEVO's compatibility provenance policy uses its detected/supplied predictor and version to
 construct one inference for CDSs, and rejects conflicting existing values.
 Without a usable version, choose explicit inference or no-inference. Detected
 ANNEVO provenance conflicts are rejected.
@@ -184,7 +222,7 @@ length conflicts and coordinates beyond sequence bounds stop preparation.
 | `--fai PATH` | Optional existing sequence-name/length index. |
 | `--assembly-report PATH` | Optional standard NCBI assembly report for the exact assembly. |
 | `--accession-column genbank\|refseq` | `genbank`; target for assembly-report and NCBI-fallback mapping. |
-| `--use-annevo-lengths` | Automatic without FAI/report in ANNEVO mode; an explicit request requires matching comments and the ANNEVO adapter. Can also cross-check an external source. |
+| `--use-annevo-lengths` | Automatic without FAI/report in ANNEVO mode; an explicit request requires matching comments and ANNEVO metadata handling. Can also cross-check an external source. |
 | `--no-ncbi-lengths` | Off; disables NCBI length fallback, including reuse of filtering metadata for missing lengths. Does not disable requested organelle filtering. |
 | `--sequence-metadata PATH` | Optional complete offline NCBI sequence-report JSON/JSONL or tool cache file. |
 | `--sequence-cache-dir PATH` | Optional shared cache override. |
@@ -362,7 +400,7 @@ python3 ena_gffprep.py --input annotation.gff3 --audit-only --report audit.json
 ```
 
 It is offline and descriptive: no prepared GFF, manifest, locus tags or NCBI
-lookup. Filtering and NCBI metadata options cannot be used. CDS arithmetic is
+lookup. Filtering and NCBI metadata options cannot be used. `--input-format` can restrict the parsed syntax; audit does not run the normalizer. CDS arithmetic is
 grouped by parent and can conflate distinct products. The 90-nt review threshold
 is not an asserted ENA rejection rule. The report's parent directory must exist.
 

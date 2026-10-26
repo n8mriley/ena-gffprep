@@ -62,8 +62,8 @@ produces a successful no-op.
 
 ## Feature relationships and locus tags
 
-Parsing and relationship construction run first. Filtering then precedes the
-source adapter, feature normalization and new tag allocation. Fundamentally
+Parsing and relationship construction run first. Filtering then precedes shared
+structural normalization and new tag allocation. Fundamentally
 malformed input can still fail before exclusion.
 
 The filter removes corresponding output sequence declarations and positional

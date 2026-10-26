@@ -20,7 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-VERSION = '0.7.0'
+VERSION = '0.8.0'
 GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',
@@ -120,7 +120,7 @@ def attributes(s):
     if s == '.':
         return out
     for pair in s.rstrip(';').split(';'):
-        require('=' in pair, f'Expected GFF3 key=value, got {pair!r}; GTF/GFF2 requires a separate adapter')
+        require('=' in pair, f'Expected GFF3 key=value, got {pair!r}; use --input-format gtf for supported quoted GTF; arbitrary GFF2 is unsupported')
         key, value = pair.split('=', 1)
         require(bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', key)), f'Invalid attribute key {key!r}')
         require(key not in out and value != '', f'Duplicate/empty attribute {key!r}')
@@ -142,15 +142,17 @@ def scalar(a, key, default=None):
     require(len(a[key]) == 1, f'{key} must have one value')
     return a[key][0]
 
-def parse(path, flexible=False):
+def parse(path, flexible=False, input_format="auto"):
     """Parse supported GFF3, or quoted GTF in flexible mode, into rows/regions/comments.
     
     Each row retains columns, decoded attribute lists, integer coordinates and its
     physical input line number. Flexible mode constructs GTF relationships and
-    retains original numeric non-CDS phases while normalizing them.
+    retains non-CDS phases for the normalizer to handle after filtering.
     Reject malformed records and embedded sequence sections.
     This parser alone does not establish biological validity or sequence identity."""
+    require(input_format in {'auto','gff3','gtf'}, 'Invalid input format')
     rows, regions, comments = [], {}, []
+    observed_syntax = set()
     with opened(path) as f:
         for line_no, line in enumerate(f, 1):
             line = line.rstrip('\r\n')
@@ -187,27 +189,27 @@ def parse(path, flexible=False):
                 start, end = int(c[3]), int(c[4])
                 require(1 <= start <= end, f'Line {line_no}: invalid coordinates')
                 require(c[6] in {'+', '-', '.', '?'}, f'Line {line_no}: invalid strand')
-                if flexible and c[2] != 'CDS' and c[7] in {'0','1','2'}:
-                    original_phase = c[7]; c[7] = '.'
-                else:
-                    original_phase = None
-                require(c[7] in {'0', '1', '2'} if c[2] == 'CDS' else c[7] in {'.','0','1','2'} if c[2] in {'recoded_codon','stop_codon'} else c[7] == '.', f'Line {line_no}: invalid phase')
+                allowed_phase = {'0','1','2'} if c[2]=='CDS' else {'.','0','1','2'} if flexible or c[2] in {'recoded_codon','stop_codon'} else {'.'}
+                require(c[7] in allowed_phase, f'Line {line_no}: invalid phase')
                 if c[5] != '.':
                     require(__import__('math').isfinite(float(c[5])), f'Line {line_no}: invalid score')
-                if flexible and re.match(r'\s*\w+\s+"', c[8]):
+                is_gtf = bool(re.match(r'\s*\w+\s+"', c[8]))
+                syntax = 'gtf' if is_gtf else 'gff3'
+                require(input_format in {'auto',syntax}, f'Line {line_no}: attributes disagree with --input-format {input_format}')
+                observed_syntax.add(syntax)
+                require(len(observed_syntax)==1, f'Line {line_no}: mixed GTF/GFF3 attribute syntax requires explicit correction')
+                if is_gtf:
+                    require(flexible, f'Line {line_no}: GTF requires standard normalization')
                     from ena_formats import gtf_attributes, gtf_identity
                     a = gtf_identity(gtf_attributes(c[8]), c[2], line_no)
                 else:
                     a = attributes(c[8])
-                if flexible and original_phase is not None:
-                    require('original_phase' not in a or a['original_phase']==[original_phase], f'Line {line_no}: original_phase conflict')
-                    a['original_phase'] = [original_phase]
                 for key in ('ID', 'Parent', 'Derives_from', 'transcript_id', 'protein_id'):
                     if key in a:
                         require(all(not re.search(r'\s', v) for v in a[key]), f'Line {line_no}: whitespace in {key}')
                 for key in ('ID','transcript_id','protein_id'):
                     scalar(a, key)
-                rows.append({'c': c, 'a': a, 'start': start, 'end': end, 'line': line_no, 'normalized_phase': flexible and original_phase is not None})
+                rows.append({'c': c, 'a': a, 'start': start, 'end': end, 'line': line_no, 'normalized_phase': False})
     require(rows, 'No features found')
     return rows, regions, comments
 
@@ -225,53 +227,25 @@ def annevo_lengths(comments):
 
 
 def adapt_annevo(rows):
-    """Normalise numbered ANNEVO CDS segments in place into logical CDS groups.
-    
-    Segments for one transcript share a CDS ID; original row identifiers are retained
-    in original_id. Reject incompatible metadata, collisions and references that
-    would make this one-CDS-per-transcript interpretation ambiguous."""
-    ids = {scalar(r['a'], 'ID') for r in rows if 'ID' in r['a']}
-    refs = {p for r in rows for p in r['a'].get('Parent', [])}
-    referenced_other = {v for r in rows for k in ('Derives_from',) for v in r['a'].get(k, [])}
-    transcripts = {scalar(r['a'], 'ID') for r in rows if r['c'][2] == 'mRNA'}
-    groups = defaultdict(list)
-    for r in rows:
-        if r['c'][2] == 'CDS':
-            parent = scalar(r['a'], 'Parent')
-            require(parent in transcripts, f'ANNEVO CDS parent must be one mRNA: line {r["line"]}')
-            groups[parent].append(r)
-    changed = 0
-    for parent, parts in groups.items():
-        old_ids = {scalar(r['a'], 'ID') for r in parts}
-        # Already-normalized groups are retained, including a single existing interval.
-        if len(old_ids) == 1 and old_ids == {parent + '.CDS'}:
-            continue
-        require(all(old is not None and re.fullmatch(re.escape(parent) + r'\.CDS\.[0-9]+', old) for old in old_ids),
-                f'Unexpected ANNEVO CDS IDs for {parent}; refusing to infer product grouping')
-        require(len(old_ids) == len(parts), f'Duplicate ANNEVO segment IDs for {parent}')
-        require(not old_ids & (refs | referenced_other), f'ANNEVO segment IDs are referenced by other features: {parent}')
-        new_id = parent + '.CDS'
-        require(new_id not in ids, f'ANNEVO normalized ID collision: {new_id}')
-        metadata = [{k: v for k, v in r['a'].items() if k not in {'ID', 'original_id'}} for r in parts]
-        require(all(a == metadata[0] for a in metadata), f'Conflicting CDS attributes across ANNEVO segments: {parent}')
-        for r in parts:
-            require('original_id' not in r['a'], f'original_id already present: {parent}')
-            r['a']['original_id'] = r['a']['ID']
-            r['a']['ID'] = [new_id]
-            changed += 1
-    return {'cds_transcripts': len(groups), 'cds_rows_renamed': changed,
-            'assumption': 'Explicit ANNEVO adapter: one CDS product per mRNA; original segment IDs retained in original_id.'}
+    """Compatibility API delegating to the single structural normalizer.
+
+    IDs no longer need an annotator-specific pattern; compatible numbered IDs
+    still produce the established parent.CDS representation and original_id.
+    """
+    from ena_normalize import normalize
+    normalized, counts = normalize(rows, scalar, require)
+    rows[:] = normalized
+    return counts
 
 
-def audit(path, source_format="auto"):
+def audit(path, source_format="auto", input_format="auto"):
     """Return descriptive feature counts and CDS arithmetic without preparing output.
     
     CDS intervals are grouped by parent for this audit. Short-length thresholds
     are advisory observations, not evidence that a prediction should be deleted."""
     from ena_formats import detect
     detection = detect(path, opened)
-    selected = detection['format'] if source_format == 'auto' else source_format
-    rows, regions, comments = parse(path, flexible=selected not in {'generic','annevo'})
+    rows, regions, comments = parse(path, flexible=source_format != 'generic', input_format=input_format)
     counts, per_seq = defaultdict(int), defaultdict(int)
     groups, exons = defaultdict(list), defaultdict(list)
     for r in rows:
@@ -503,8 +477,9 @@ def prepare(args):
         for value in [args.name, args.description, args.assembly_accession, str(Path(args.output).resolve())]:
             require(not any(c in value for c in '\r\n\t'), 'Manifest values must be single fields')
     source_format = getattr(args, 'source_format', 'generic')
-    flexible = source_format not in {'generic','annevo'}
-    rows, regions, comments = parse(args.input, flexible=flexible)
+    normalization_mode = getattr(args, 'normalization', 'standard')
+    flexible = normalization_mode == 'standard'
+    rows, regions, comments = parse(args.input, flexible=flexible, input_format=getattr(args,'input_format','auto'))
     require(not any(c.startswith('#!transl_table') for c in comments), 'File-level transl_table pragma requires explicit per-CDS translation tables before preparation; this version does not interpret organelle scope')
     name_only_species = []
     input_species = []
@@ -512,7 +487,7 @@ def prepare(args):
     for comment in comments:
         if comment.startswith('##species'):
             match = re.search(r'(?:/taxonomy/|/tax-id/|[?&]id=)([0-9]+)(?:/|$|&)', comment)
-            if flexible and source_format == 'helixer' and match is None and re.fullmatch(r'##species\s+[A-Za-z][A-Za-z_]+', comment):
+            if flexible and match is None and re.fullmatch(r'##species\s+[A-Za-z][A-Za-z_]+', comment):
                 name_only_species.append(comment)
                 continue  # name is reported, never guessed into a taxonomy ID
             require(match is not None and int(match[1]) > 0, 'Input species URI is unrecognized or has an invalid taxon ID')
@@ -538,13 +513,9 @@ def prepare(args):
         from ena_organelles import filter_rows
         # Filter before adapting CDSs or allocating new locus tags.
         rows, regions, comments, organelle_filter, excluded_assignments = filter_rows(rows, regions, comments, args)
-    if source_format == 'annevo':
-        adapter = adapt_annevo(rows)
-    elif flexible:
-        from ena_formats import adapt
-        adapter = adapt(rows, scalar, require)
-    else:
-        adapter = {}
+    from ena_normalize import normalize
+    rows, normalization_rules = normalize(rows, scalar, require, mode=normalization_mode,
+                              cds_grouping=getattr(args,'cds_grouping','auto'))
     aliases, sizes, length_checks = lengths(args, regions, {r['c'][0] for r in rows})
     if organelle_filter:
         for seq, expected in organelle_filter['matched_sequence_lengths'].items():
@@ -552,10 +523,10 @@ def prepare(args):
     warnings, notes = [], []
     if flexible:
         phases = sum(r.get('normalized_phase', False) for r in rows)
-        adapter['non_CDS_phases_normalized'] = phases
-        adapter['name_only_species_directives'] = name_only_species
+        normalization_rules['non_CDS_phases_normalized'] = phases
+        normalization_rules['name_only_species_directives'] = name_only_species
         if name_only_species:
-            warnings.append('Name-only Helixer species directive omitted; supply --taxon-id for a canonical taxonomy URI.')
+            warnings.append('Name-only species directive omitted; supply --taxon-id for a canonical taxonomy URI.')
         source_map = getattr(args, 'inference_by_source', {})
         if source_map:
             unassigned = sorted({r['c'][1] for r in rows if r['c'][2]=='CDS' and not source_map.get(r['c'][1])})
@@ -608,7 +579,6 @@ def prepare(args):
         require(not fid.startswith('__anonymous_') or 'ID' not in r['a'], 'Reserved ID prefix')
         r['key'] = fid
         nodes[fid].append(r)
-    referenced = {p for r in rows for p in r['a'].get('Parent', [])}
     for fid, parts in nodes.items():
         signatures = {(r['c'][0], r['c'][2], r['c'][6], tuple(r['a'].get('Parent', []))) for r in parts}
         require(len(signatures) == 1, f'Inconsistent repeated ID {fid}; remote/trans-spliced features require specialist handling')
@@ -621,30 +591,8 @@ def prepare(args):
                     part['a'].setdefault(attr, list(value))
         intervals = sorted((r['start'], r['end']) for r in parts)
         require(all(a[1] < b[0] for a, b in zip(intervals, intervals[1:])), f'Overlapping/duplicate intervals for repeated ID {fid}')
-    derives_refs = {p for r in rows for p in r['a'].get('Derives_from', [])}
-    # Shared leaves can be copied safely; shared internal subtrees need a dedicated adapter.
-    newnodes = {}
-    splits = 0
-    for fid, parts in nodes.items():
-        parents = parts[0]['a'].get('Parent', [])
-        if len(parents) <= 1:
-            newnodes[fid] = parts
-            continue
-        require(len(set(parents)) == len(parents), f'Duplicate Parent on {fid}')
-        require(fid not in referenced and fid not in derives_refs, f'Multiple-parent internal or referenced feature {fid}: cannot safely duplicate it')
-        for n, parent in enumerate(parents, 1):
-            new_id = f'{fid}.ena_parent{n}'
-            require(new_id not in nodes and new_id not in newnodes, f'Generated ID collision: {new_id}')
-            copies = []
-            for r in parts:
-                copy = dict(r, c=list(r['c']), a={k:list(v) for k,v in r['a'].items()}, key=new_id)
-                copy['a']['Parent'] = [parent]
-                if 'ID' in copy['a']:
-                    copy['a']['ID'] = [new_id]
-                copies.append(copy)
-            newnodes[new_id] = copies
-        splits += 1
-    nodes = newnodes
+    # The structural normalizer has already produced single-parent leaves.
+    require(all(len(parts[0]['a'].get('Parent',[])) <= 1 for parts in nodes.values()), 'Normalizer left multiple-parent features')
     children = defaultdict(list)
     indegree = {fid: 0 for fid in nodes}
     for fid, parts in nodes.items():
@@ -707,7 +655,7 @@ def prepare(args):
         owner = fid if r['c'][2] == 'gene' else owners.get(parent)
         owners[fid] = owner
         require(r['c'][2] != 'gene' or 'ID' in r['a'], 'Every gene needs an explicit stable ID')
-        require(r['c'][2] not in GENIC or owner is not None, f'Orphan gene component {fid}: gene parent missing; use a source-specific adapter')
+        require(r['c'][2] not in GENIC or owner is not None, f'Orphan gene component {fid}: gene parent missing; provide an explicit supported gene hierarchy')
         for part in nodes[fid]:
             existing = scalar(part['a'], 'locus_tag')
             if existing:
@@ -771,10 +719,13 @@ def prepare(args):
         warnings.append(f"{len(biological_review['nontriplet_without_partial_end'])} CDS lengths are not multiples of three without an indicated partial end")
     warnings = sorted(set(warnings))
     report = {'tool_version': VERSION, 'input_sha256': sha256(args.input),
-              'assembly_accession': args.assembly_accession, 'source_format': source_format, 'adapter': adapter,
+              'assembly_accession': args.assembly_accession, 'source_format': source_format, 'adapter': normalization_rules,
+              'normalization': {'engine':'structural', 'mode':normalization_mode,
+                                'input_format':getattr(args,'input_format','auto'),
+                                'cds_grouping':getattr(args,'cds_grouping','auto'), 'rules':normalization_rules},
               'sequence_lengths_source': 'ncbi_sequence_report' if length_checks['ncbi_sequence_report'] else 'assembly_report' if args.assembly_report else 'fai' if args.fai else 'annevo_comments' if comment_sizes else 'sequence_region',
               'genes': len(active),
-              'feature_rows': sum(len(v) for v in nodes.values()), 'shared_features_split': splits,
+              'feature_rows': sum(len(v) for v in nodes.values()), 'shared_features_split': normalization_rules.get('shared_features_split',0),
               'reserved_retired_gene_ids': sorted(set(mapping) - active_set), 'warnings': warnings, 'notes': notes,
               'submission_metadata': {'taxon_id': effective_taxon, 'requested_taxon_id': requested_taxon,
                   'taxonomy_source': taxonomy_source, 'species_directive': species_directive, 'assembly_accession': args.assembly_accession,
