@@ -204,6 +204,18 @@ def load_metadata(args, require_classification=True):
                          assembly_accession=accession, metadata_sequence_count=len(records))
 
 
+def manual_sequence_ids(value):
+    """Validate optional exact sequence IDs; booleans retain automatic/off modes."""
+    check(isinstance(value, (bool, str)), 'remove_organelles must be a boolean or comma-separated sequence IDs')
+    if isinstance(value, bool):
+        return None
+    names = [part.strip() for part in value.split(',')]
+    check(all(names) and all(all(33 <= ord(c) <= 126 for c in name) for name in names),
+          'Manual organelle list contains an empty or invalid sequence ID')
+    check(len(names) == len(set(names)), 'Manual organelle list contains duplicate sequence IDs')
+    return set(names)
+
+
 def filter_rows(rows, regions, comments, args):
     """Return retained rows/regions/comments plus summary and excluded rows.
 
@@ -211,13 +223,27 @@ def filter_rows(rows, regions, comments, args):
     reject cross-boundary feature IDs and references. Keep unclassified primary
     scaffolds with an explicit report entry, rather than declaring them nuclear.
     """
-    records, provenance = load_metadata(args)
-    args._ncbi_sequence_metadata = (records, provenance)  # shared within this preparation only
+    manual = manual_sequence_ids(getattr(args, 'remove_organelles', True))
+    if manual is not None:
+        check(not any(getattr(args, key, None) for key in
+                      ['organelle_metadata', 'organelle_cache_dir', 'refresh_organelle_cache']),
+              'Manual organelle IDs cannot be combined with organelle metadata/cache options')
+        observed = {r['c'][0] for r in rows} | set(regions)
+        check(not manual - observed, 'Manual organelle sequence IDs absent from input: '+', '.join(sorted(manual-observed)))
+        # Local exact IDs only: do not invent NCBI classification, aliases or lengths.
+        records = [dict(aliases=[seq], canonical=seq, length=regions.get(seq),
+                        organelle=seq in manual, location='manual exclusion' if seq in manual else 'unknown',
+                        unclassified=seq not in manual) for seq in sorted(observed)]
+        provenance = dict(source='manual', requested_sequence_ids=sorted(manual),
+                          classification_scope='Only explicitly listed input IDs are excluded; retained sequences are not classified')
+    else:
+        records, provenance = load_metadata(args)
+        args._ncbi_sequence_metadata = (records, provenance)  # shared within this preparation only
     aliases = defaultdict(list)
     for record in records:
         for alias in record['aliases']:aliases[alias].append(record)
     matched = {}
-    for seq in sorted({r['c'][0] for r in rows}):
+    for seq in sorted(({r['c'][0] for r in rows} | manual) if manual is not None else {r['c'][0] for r in rows}):
         candidates = aliases.get(seq,[])
         check(len(candidates)==1, ('Ambiguous' if candidates else 'Unmatched')+' GFF sequence in NCBI metadata: '+seq)
         matched[seq] = candidates[0]
@@ -251,7 +277,7 @@ def filter_rows(rows, regions, comments, args):
     counts = Counter(r['c'][0] for r in removed)
     genes = Counter(seq for seq, fid in {(r['c'][0], tuple(r['a'].get('ID',[str(r['line'])])))
                                          for r in removed if r['c'][2] in GENE_TYPES})
-    excluded = [dict(seqid=seq, ncbi_sequence=record['canonical'], location=record['location'],
+    excluded = [dict(seqid=seq, ncbi_sequence=record['canonical'] if manual is None else '', location=record['location'],
                      feature_rows=counts[seq], genes=genes[seq]) for seq,record in sorted(matched.items()) if record['organelle']]
     # Prediction comments can be positional. Retain only global directives/provenance.
     retained_comments = [c for c in comments if c.startswith(('##species','##attribute-ontology','##source-ontology',
@@ -263,7 +289,7 @@ def filter_rows(rows, regions, comments, args):
                    excluded_sequences=excluded,
                    organelles_in_assembly=[dict(sequence=r['canonical'],location=r['location'],aliases=r['aliases']) for r in records if r['organelle']],
                    matched_sequences={seq:r['canonical'] for seq,r in sorted(matched.items())},
-                   matched_sequence_lengths={seq:r['length'] for seq,r in sorted(matched.items()) if not r['organelle']},
+                   matched_sequence_lengths={seq:r['length'] for seq,r in sorted(matched.items()) if not r['organelle'] and r['length'] is not None},
                    unclassified_retained_sequences=[seq for seq,r in sorted(matched.items()) if r['unclassified']],
                    discarded_comment_count=len(comments)-len(retained_comments),
                    excluded_gene_ids=sorted({v for r in removed if r['c'][2] in GENE_TYPES for v in r['a'].get('ID',[])}))

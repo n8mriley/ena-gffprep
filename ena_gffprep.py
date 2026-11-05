@@ -148,7 +148,12 @@ def resolve_settings(settings):
     s.setdefault('accession_column','genbank')
     check(s['accession_column'] in {'genbank','refseq'}, '--accession-column must be genbank or refseq')
     s.setdefault('strict_warnings',False)
-    for key in ['remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+    from ena_organelles import manual_sequence_ids
+    manual_sequence_ids(s.get('remove_organelles', False))
+    if isinstance(s.get('remove_organelles'), str):
+        check(not any(s.get(k) for k in ['organelle_metadata','organelle_cache_dir','refresh_organelle_cache']),
+              'Manual organelle IDs cannot be combined with organelle metadata/cache options; use sequence options for length lookup')
+    for key in ['refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
         check(key not in s or isinstance(s[key],bool), key+' must be a JSON boolean or TSV true/false')
     check(s.get('remove_organelles') or not any(s.get(k) for k in ['organelle_metadata','organelle_cache_dir','refresh_organelle_cache']),
           'Organelle metadata/cache options require --remove-organelles')
@@ -217,7 +222,7 @@ def prepare_package(settings):
             'translation_table_source':'explicit' if settings.get('translation_table') is not None else 'default_nuclear_assumption',
             'automatic_annevo_comment_lengths':s['automatic_annevo_lengths'],
             'output_directory':s['output_dir'],
-            'policy':('Remove NCBI-classified organelle predictions; preserve retained coordinates; biological QC is advisory.'
+            'policy':('Remove automatically identified or explicitly specified organelle predictions; preserve retained coordinates; biological QC is advisory.'
                       if s.get('remove_organelles') else 'Preserve predictions; add representation and submission metadata; biological QC is advisory.')}
         write_json(directory/'preparation.json',report)
         warnings = report['warnings']
@@ -256,6 +261,8 @@ def batch_prepare(path, defaults, summary_path):
         # TSV values are strings; boolean fields have an explicit small vocabulary.
         try:
             for key in ['no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+                if key == 'remove_organelles' and isinstance(settings.get(key), str) and settings[key].lower() not in {'true','false'}:
+                    continue  # comma-separated exact sequence IDs
                 if isinstance(settings.get(key),str):
                     check(settings[key].lower() in {'true','false'},f'{key} must be true or false')
                     settings[key]=settings[key].lower()=='true'
@@ -293,7 +300,9 @@ def parser():
     for key in ['taxon_id','translation_table','width','start','step']:
         p.add_argument('--'+key.replace('_','-'),type=int,
             help='Optional taxonomy ID; adds ##species. Without it, an existing valid directive is preserved.' if key=='taxon_id' else None)
-    for key in ['no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+    p.add_argument('--remove-organelles', nargs='?', const=True, default=None, metavar='SEQID[,SEQID...]',
+                   help='With no value, identify organelles using NCBI metadata. With a comma-separated list, exclude exact input sequence IDs without organelle lookup.')
+    for key in ['no_inference','strict_warnings','use_annevo_lengths','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
         p.add_argument('--'+key.replace('_','-'),action='store_true',default=None,
             help={'no_ncbi_lengths':'Disable automatic NCBI lookup for missing sequence lengths; does not disable requested organelle filtering.',
                   'refresh_sequence_cache':'Fetch fresh metadata when a lookup is needed; cannot combine with offline metadata.',

@@ -456,7 +456,8 @@ def prepare(args):
     require(args.translation_table in TRANSLATION_TABLES, 'Translation table is not in the supported NCBI registry')
     if args.assembly_accession:
         require(bool(re.fullmatch(r'GC[AF]_[0-9]+\.[0-9]+', args.assembly_accession)), 'Assembly accession must be GCA_/GCF_ accession.version')
-    require(isinstance(getattr(args, 'remove_organelles', False),bool), 'remove_organelles must be a boolean')
+    from ena_organelles import manual_sequence_ids
+    manual_sequence_ids(getattr(args, 'remove_organelles', False))
     remove_organelles = bool(getattr(args, 'remove_organelles', False))
     organelle_report = (str(getattr(args, 'organelle_report', None) or Path(args.report).with_suffix('.organelles.tsv'))
                         if remove_organelles else None)
