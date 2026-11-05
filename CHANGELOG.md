@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Manual organelle exclusions
+
+- Accept an optional comma-separated sequence list after `--remove-organelles`;
+  retain automatic NCBI identification when the flag has no value.
+- Match exact input IDs, remove features and sequence declarations before
+  normalization/tag allocation, and retain relationship and tag safeguards.
+- Record manual provenance and reject unknown, duplicate or empty IDs.
+- Support manual lists in JSON configuration and batch TSV; clarify that missing
+  sequence lengths can still require NCBI unless lookup is disabled.
+- Add eight regression tests (210 total).
+
 ## 0.8.0
 
 - Replace source-selected transformations with one source-independent graph normalizer; keep parsing and provenance separate.

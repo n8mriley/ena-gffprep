@@ -94,13 +94,14 @@ They need no NCBI connection, Webin credentials, Java or extra Python packages.
 | Structure | Parent graphs, single-parent output, multipart IDs, shared leaves, coordinate bounds and advisory CDS arithmetic. |
 | Locus tags | Stable allocation, collisions, suffix syntax, propagation and historical reservations. |
 | NCBI metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, pagination, caching/refresh, failure handling and shared filtering lookups. |
-| Filtering/workflows | Organelle exclusions, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
+| Filtering/workflows | Automatic and manual organelle exclusions, optional CLI values, exact-ID validation, header-only exclusions, network bypass, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
 | Diagnostics | Supported validator-log associations and review tables. |
 
 Local checks do not establish nucleotide identity with the archived assembly,
 translation correctness, expression, biological partiality, all controlled
 vocabularies, prefix ownership or archive acceptance. Metadata-only filtering
-can miss unlabelled or misclassified organelles. Synthetic fixtures and local
+can miss unlabelled or misclassified organelles. Manual filtering excludes only
+the supplied IDs and does not establish that retained sequences are nuclear. Synthetic fixtures and local
 validator checks, including checks using synthetic bounds, do not certify a real
 submission. Use true assembly metadata and the intended Webin workflow for each
 prepared annotation.

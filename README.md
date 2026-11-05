@@ -242,7 +242,7 @@ JSONL has no independent completeness marker. Every record must identify the
 exact assembly version and a positive length. Length-only use does not require
 organelle classifications.
 
-Length fallback and organelle removal share one loaded report. Their general
+Automatic organelle removal and length fallback share one loaded report. Their general
 and organelle-specific metadata/cache paths must agree if both are supplied.
 Preserve the exact metadata file: the preparation report records its path,
 SHA-256, source, retrieval information and matched sequences. Metadata matching
@@ -255,10 +255,10 @@ does not prove nucleotide identity with the archived assembly.
 | `--taxon-id INTEGER` | Optional positive taxon ID; adds a canonical `##species` URI. Otherwise a recognized input URI is preserved, or the directive is omitted. Taxonomy conflicts fail. |
 | `--translation-table INTEGER` | `1`; fallback for translating CDSs without a table. Existing supported per-CDS tables are preserved; pseudogenic CDSs omit them. |
 | `--default-product "TEXT"` | No default; fills missing CDS products only when explicitly requested. Existing products are retained. |
-| `--remove-organelles` | Off; excludes all feature rows on NCBI-classified organelle sequences before conversion and new tag allocation. |
-| `--organelle-metadata PATH` | Filtering-specific name for an offline sequence report; requires `--remove-organelles`. |
-| `--organelle-cache-dir PATH` | Filtering-specific cache override; requires `--remove-organelles`. |
-| `--refresh-organelle-cache` | Filtering-specific refresh flag; requires `--remove-organelles`. |
+| `--remove-organelles [SEQID[,SEQID...]]` | Off when omitted. With no value, identify organelles from NCBI metadata. With a value, exclude the exact input sequence IDs listed, without an organelle metadata lookup. Both modes run before normalization and new tag allocation. |
+| `--organelle-metadata PATH` | Filtering-specific name for an offline sequence report; requires automatic mode (bare `--remove-organelles`). |
+| `--organelle-cache-dir PATH` | Filtering-specific cache override; requires automatic mode (bare `--remove-organelles`). |
+| `--refresh-organelle-cache` | Filtering-specific refresh flag; requires automatic mode (bare `--remove-organelles`). |
 | `--strict-warnings` | Off; warnings in the preparation report become fatal. Notes are separate, and external validators can still report their own warnings. |
 
 Table 1 is a nuclear assumption, not a universal genetic code. No code is inferred
@@ -269,11 +269,33 @@ or another deliberate strategy. Taxonomy lookup is not inferred from a species
 name: Helixer's name-only directive is omitted with a warning if no taxon is
 provided, while an explicit taxon produces a canonical URI.
 
-Organelle removal uses metadata, not name/size heuristics. The assembly itself
-and manifest PRIMARY_ID are unchanged. A header-only exclusion TSV means no
-annotated organelle records were removed; an assembly can contain an organelle
-sequence with no annotations in the input. See [ORGANELLES.md](ORGANELLES.md) for
-classification, reference checks and tag reservation.
+Choose automatic identification or explicitly supplied sequence IDs:
+
+```bash
+# Automatic identification from complete NCBI metadata:
+--remove-organelles
+
+# Manual exclusion of exact input IDs (replace these example accessions):
+--remove-organelles OV123456.1,OV123457.1
+```
+
+Manual IDs match column 1 or an input `##sequence-region` declaration exactly,
+including accession versions. Unknown names, empty entries and duplicate names
+are rejected. No name/size heuristics or automatic alias matching are used in
+manual mode. The list is your assertion that these sequences should be excluded;
+retained sequences are not thereby established as nuclear.
+
+Manual filtering bypasses organelle identification, but missing retained sequence
+lengths can still trigger NCBI lookup. For offline preparation, provide lengths in
+the input or via `--fai`/`--assembly-report`, and add `--no-ncbi-lengths` to prevent
+length lookup. Do not combine manual IDs with organelle-specific metadata/cache
+options; general sequence metadata/cache options remain available for lengths.
+
+The assembly itself and manifest PRIMARY_ID are unchanged. Reports record the
+exclusions and whether their source was manual or automatic. A manual TSV entry
+has an empty `ncbi_sequence` and `location` set to `manual exclusion`. See
+[ORGANELLES.md](ORGANELLES.md) for classification, reference checks and tag
+reservation.
 
 ## Locus tags
 
@@ -351,7 +373,9 @@ The profile version is separate from the converter version.
 ## Configuration and batches
 
 JSON defaults use CLI option names with underscores. Unknown keys are rejected.
-Use JSON booleans, not quoted strings. For example:
+Use JSON booleans for boolean settings. `remove_organelles` also accepts a
+comma-separated string of exact sequence IDs for manual filtering (see
+[ORGANELLES.md](ORGANELLES.md#config-batch-and-audit)). For example:
 
 ```json
 {

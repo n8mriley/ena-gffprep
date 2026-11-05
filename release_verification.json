@@ -2,10 +2,10 @@
   "toolkit_version": "0.8.0",
   "automated_tests": {
     "command": "python3 -m unittest discover -s tests -v",
-    "test_count": 202,
+    "test_count": 210,
     "status": "passed",
-    "python_version": "3.12.14",
-    "network_required": false
+    "network_required": false,
+    "scope": "Existing 202 tests plus 8 manual-exclusion tests; passed locally and in the user installation."
   },
   "output_comparison": {
     "baseline": "0.7.0",
@@ -22,5 +22,10 @@
     "scope": "Local rules only; some comparisons used synthetic bounds. Not authenticated Webin acceptance.",
     "jar_sha256": "05c7070b4f1aa646eb19f34db844360d9d50155f1244b2b4377496efa1edfb72"
   },
-  "authenticated_webin_validation_run": false
+  "authenticated_webin_validation_run": false,
+  "manual_organelle_exclusions": {
+    "status": "tested",
+    "new_tests": 8,
+    "authenticated_webin_validation_run": false
+  }
 }
