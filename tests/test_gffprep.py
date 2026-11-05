@@ -245,6 +245,14 @@ class Tests(unittest.TestCase):
         self.assertEqual(fields['ANALYSIS_TYPE'],'DECOUPLED_ANNOTATION')
         self.assertEqual(fields['PRIMARY_ID'],'GCA_948150665.1')
         self.assertEqual((dest.parent/fields['GFF3']).resolve(),Path(a.output).resolve())
+    def test_manifest_bioproject_study(self):
+        dest=self.d/'study_manifest.txt'
+        a,_,_=self.runprep(manifest=str(dest),assembly_accession='GCA_948150665.1',bioproject='PRJEB123456')
+        fields=dict(line.split('\t',1) for line in dest.read_text().splitlines())
+        self.assertEqual(fields['STUDY'],'PRJEB123456')
+        self.assertEqual(fields['PRIMARY_ID'],'GCA_948150665.1')
+        self.assertEqual((dest.parent/fields['GFF3']).resolve(),Path(a.output).resolve())
+
     def test_commit_failure_rolls_back(self):
         from unittest.mock import patch
         real_link=m.os.link

@@ -7,12 +7,15 @@ submission receipt or a biological quality assessment.
 
 ## Webin validation
 
+Webin CLI 11.0.0 requires `STUDY` in the annotation manifest. Pass `--bioproject PRJEB123456` during preparation to populate `STUDY` (use your real accession). Older packages without `STUDY` must be regenerated with this option before submission. This option changes only manifest metadata, not GFF3 coordinates or predictions.
+
+
 Change into the prepared package directory. `VALIDATE.txt` contains the command
 pattern. With credentials already exported in the environment:
 
 ```bash
 java -Xmx4g -XX:ActiveProcessorCount=2 \
-  -jar /absolute/path/to/webin-cli-10.0.0-beta.jar \
+  -jar /absolute/path/to/webin-cli-dev-11.0.0.jar \
   -context annotation -manifest manifest.txt \
   -username "$WEBIN_USERNAME" -passwordEnv WEBIN_PASSWORD \
   -validate
@@ -43,7 +46,7 @@ It runs local rules without authentication or archive/registry checks:
 
 ```bash
 python3 run_bundled_validator.py \
-  --jar /path/to/webin-cli-10.0.0-beta.jar \
+  --jar /path/to/webin-cli-dev-11.0.0.jar \
   --gff /path/to/prepared.ena.gff3.gz \
   --log local-validation.log
 ```

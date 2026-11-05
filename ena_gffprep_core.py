@@ -784,7 +784,7 @@ def prepare(args):
         if args.manifest:
             require(bool(args.assembly_accession), '--assembly-accession required with --manifest')
             with opened(staged[args.manifest], 'wt') as f:
-                for k,v in [('NAME',args.name), ('GFF3',os.path.relpath(Path(args.output).resolve(), Path(args.manifest).resolve().parent)), ('ANALYSIS_TYPE','DECOUPLED_ANNOTATION'), ('PRIMARY_ID',args.assembly_accession), ('DESCRIPTION',args.description)]:
+                for k,v in [('NAME',args.name), *(([('STUDY',args.bioproject)] if getattr(args, 'bioproject', None) else [])), ('GFF3',os.path.relpath(Path(args.output).resolve(), Path(args.manifest).resolve().parent)), ('ANALYSIS_TYPE','DECOUPLED_ANNOTATION'), ('PRIMARY_ID',args.assembly_accession), ('DESCRIPTION',args.description)]:
                     require(not any(x in v for x in '\r\n\t'), f'Manifest {k} must be a single field')
                     f.write(k + '\t' + v + '\n')
     return report

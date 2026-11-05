@@ -325,7 +325,7 @@ for a rerun. The input annotation is not overwritten.
 | File | Contents |
 | --- | --- |
 | `LABEL.ena.gff3.gz` | Prepared annotation. |
-| `manifest.txt` | Tab-separated NAME, GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. The GFF3 path is relative to the manifest. |
+| `manifest.txt` | Tab-separated NAME, STUDY (when --bioproject is supplied), GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. Webin CLI 11 requires STUDY for submission; supply --bioproject to include it. The GFF3 path is relative to the manifest. |
 | `locus_tags.tsv` | Cumulative `gene_id`, `locus_tag`, `status` map, including reserved entries. |
 | `preparation.json` | Input hashes, settings, source detection, transformations, lengths, provenance, warnings and advisory checks. |
 | `preparation.txt` | Human-readable preparation summary. |
@@ -362,6 +362,7 @@ Genome annotation prepared for ENA decoupled submission. Annotator: BRAKER Versi
 | `--output-dir PATH` | Exact new package directory; overrides out-root/label directory placement, not the filename. |
 | `--name "TEXT"` | Override manifest NAME. |
 | `--description "TEXT"` | Override DESCRIPTION completely; metadata is not automatically appended to custom text. |
+| `--bioproject PRJEB123456` | BioProject accession written as STUDY in the annotation manifest. Accepted prefixes: PRJEB, PRJNA, PRJDB. Supported in CLI, JSON defaults, and batch TSV. Supply for Webin CLI 11.0.0. |
 | `--assembly-accession ACCESSION` | Required versioned assembly accession; written as PRIMARY_ID. |
 
 Compressed GFF bytes are reproducible for identical input/settings because gzip
