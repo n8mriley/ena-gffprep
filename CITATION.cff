@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "ena_gffprep: ENA GFF preparation tools"
+type: software
+authors:
+  - family-names: Riley
+    given-names: Nathan
+    affiliation: "Wellcome Sanger Institute, Tree of Life programme"
+version: "0.8.0"
+license: MIT
+repository-code: "https://github.com/n8mriley/ena-gffprep"
