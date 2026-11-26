@@ -36,7 +36,7 @@ Clone the initial public release and keep the Python modules together. No
 package installation, GPU or Java is needed for preparation.
 
 ```bash
-git clone --branch v0.8.0 https://github.com/n8mriley/ena-gffprep.git
+git clone https://github.com/n8mriley/ena-gffprep.git
 cd ena-gffprep
 python3 ena_gffprep.py --version
 ```
