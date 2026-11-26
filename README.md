@@ -2,6 +2,8 @@
 
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
+[![Release](https://img.shields.io/github/v/release/n8mriley/ena-gffprep)](https://github.com/n8mriley/ena-gffprep/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](#requirements)
+
 Prepare existing genome annotations for ENA decoupled GFF3 submission. Version
 **0.8.0** supports several annotation formats, creates a manifest and locus-tag
 map, and records the preparation settings. It does not run annotation software,
@@ -26,7 +28,38 @@ policy and validate each output. More comprehensive evidence-based annotation
 support and testing are planned. Do not treat successful preparation as proof
 that evidence semantics or biological models are correct.
 
-## Start here
+## Quick start
+
+### Install
+
+Clone the initial public release and keep the Python modules together. No
+package installation, GPU or Java is needed for preparation.
+
+```bash
+git clone --branch v0.8.0 https://github.com/n8mriley/ena-gffprep.git
+cd ena-gffprep
+python3 ena_gffprep.py --version
+```
+
+### Try a local example
+
+Run the included synthetic fixture without network access or credentials:
+
+```bash
+python3 ena_gffprep.py \
+  --input examples/pilot.gff3 \
+  --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
+  --locus-tag-prefix EXAMPLE \
+  --no-inference --no-ena-lengths \
+  --output-dir example-preparation
+```
+
+Inspect `example-preparation/preparation.txt` and `manifest.txt`. The accessions
+and prefix are placeholders: **do not submit this package**. Choose a new output
+directory for each run.
+
+### Prepare a real annotation
 
 For an automatically recognized annotation with a supported provenance policy:
 
@@ -80,6 +113,28 @@ ANNEVO header and inference handling is retained, but structural normalization i
 | Taxon ID, model, output directory, product fallback | Optional. |
 
 After preparation, review the reports and [validate the generated manifest](VALIDATION.md).
+
+## Documentation
+
+The toolkit ends at package preparation; Webin validation and submission are
+separate user-controlled steps.
+
+| Guide | Purpose |
+| --- | --- |
+| [Examples](examples/README.md) | Synthetic fixture and batch templates |
+| [Input syntax and normalization](#input-syntax-and-structural-normalization) | Feature graph and CDS grouping policies |
+| [Prediction provenance](#prediction-provenance) | Inference and evidence handling |
+| [Organelle filtering](ORGANELLES.md) | Automatic and manual exclusions |
+| [Locus tags](LOCUS_TAGS.md) | Stable allocation and annotation updates |
+| [Configuration and batches](#configuration-and-batches) | Reproducible multi-annotation runs |
+| [Validation](VALIDATION.md) | Webin, local checks and troubleshooting |
+| [Compatibility](COMPATIBILITY.md) | Evidence levels and real-data reporting |
+| [Changelog](CHANGELOG.md) | Development history |
+
+Standards and archive resources: [ENA submission documentation](https://ena-docs.readthedocs.io/),
+[Sequence Ontology GFF3 specification](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md)
+and [INSDC](https://www.insdc.org/). The general GFF3 specification alone does
+not establish compliance with ENA's decoupled annotation submission rules.
 
 ## Requirements
 

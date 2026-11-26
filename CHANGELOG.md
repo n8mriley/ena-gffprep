@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — User documentation
+
+- Add release-pinned installation, offline quick start and guide navigation.
+- Add compatibility reporting guidance, contributor instructions and a bug report template.
+
 ## Unreleased — Submission metadata and documentation
 
 - Require BioProject for preparation via CLI, configuration, batch or direct API; always write STUDY in generated manifests. Audit remains exempt.

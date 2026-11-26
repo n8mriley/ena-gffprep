@@ -9,7 +9,6 @@ submission receipt or a biological quality assessment.
 
 The annotation manifest must contain `STUDY`. Preparation requires a BioProject accession (CLI, config or batch row) and always writes `STUDY` to generated manifests. Use a study that your Webin account can reference. Older packages without `STUDY` must be regenerated with this option before submission. This option changes only manifest metadata, not GFF3 coordinates or predictions.
 
-
 Change into the prepared package directory. `VALIDATE.txt` contains the command
 pattern. Obtain a compatible Webin CLI JAR supporting decoupled annotation
 submissions from ENA and set `WEBIN_JAR` to its absolute path. With credentials
@@ -84,6 +83,12 @@ python3 ena_add_inference.py \
 
 Replace the provenance with the true method/version; this is an optional separate
 workflow, not an additional required preparation step.
+
+## Real-data validation
+
+Use the [compatibility reporting guide](COMPATIBILITY.md) to record the exact
+assembly, predictor, preparation settings, feature concordance and Webin
+outcome. Report preparation success separately from archive acceptance.
 
 ## Automated tests and scope
 
