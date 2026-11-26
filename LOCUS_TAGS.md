@@ -10,8 +10,7 @@ is excluded; an input repeat_region carrying a tag must be corrected explicitly.
 Register the prefix through production ENA Webin's study registration workflow,
 selecting “Will you provide functional genome annotation?”. Allow approximately
 24 hours for a newly registered prefix to become usable. The converter checks
-syntax, not registration, availability or ownership. DDBJ's registration route
-is separate; use ENA's instructions for an ENA submission.
+syntax, not registration, availability or ownership.
 
 | Element | Converter rule |
 | --- | --- |
