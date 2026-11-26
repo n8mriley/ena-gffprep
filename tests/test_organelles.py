@@ -147,7 +147,7 @@ class OrganelleTests(unittest.TestCase):
         dest=self.d/'package'
         source=self.d/'input.gff';source.write_text(base.BASE)
         with self.assertRaisesRegex(ValueError,'Unmatched'):
-            cli.prepare_package(dict(input=str(source),organelle_metadata=self.metadata([record('mt','Mitochondrion')]),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,remove_organelles=True,output_dir=str(dest)))
+            cli.prepare_package(dict(input=str(source),organelle_metadata=self.metadata([record('mt','Mitochondrion')]),assembly_accession=ACC,bioproject='PRJEB123456',locus_tag_prefix='TEST',no_inference=True,remove_organelles=True,output_dir=str(dest)))
         self.assertFalse(dest.exists())
 
 class MetadataTransportTests(unittest.TestCase):
@@ -202,7 +202,7 @@ class MetadataTransportTests(unittest.TestCase):
         batch=self.root/'jobs.tsv'
         batch.write_text('input\tassembly_accession\tlocus_tag_prefix\tno_inference\tremove_organelles\torganelle_metadata\ninput.gff\t'+ACC+'\tTEST\ttrue\ttrue\t'+metadata.name+'\n')
         with contextlib.redirect_stdout(io.StringIO()):
-            code=cli.batch_prepare(batch,{'out_root':str(self.root/'prepared')},self.root/'summary.json')
+            code=cli.batch_prepare(batch,{'bioproject':'PRJEB123456','out_root':str(self.root/'prepared')},self.root/'summary.json')
         self.assertEqual(code,0)
         outputs=list((self.root/'prepared').glob('*/organelle_exclusions.tsv'))
         self.assertEqual(len(outputs),1)
@@ -211,4 +211,4 @@ class MetadataTransportTests(unittest.TestCase):
     def test_options_without_flag_rejected(self):
         source=self.root/'input.gff';source.write_text(base.BASE)
         with self.assertRaisesRegex(ValueError,'require --remove-organelles'):
-            cli.resolve_settings(dict(input=str(source),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,organelle_metadata='meta.json'))
+            cli.resolve_settings(dict(input=str(source),assembly_accession=ACC,bioproject='PRJEB123456',locus_tag_prefix='TEST',no_inference=True,organelle_metadata='meta.json'))

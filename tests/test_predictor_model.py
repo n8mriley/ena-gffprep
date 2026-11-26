@@ -13,7 +13,7 @@ class PredictorModelTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.source = self.root/'input.gff'
         self.source.write_text(ANNEVO.replace('##sequence-region seq1 1 100', '# ----- prediction on sequence number 1 (length = 100, name = seq1) -----'))
-        self.settings = dict(input=str(self.source), assembly_accession='GCA_123456789.1', locus_tag_prefix='TEST', output_dir=str(self.root/'out'))
+        self.settings = dict(input=str(self.source), assembly_accession='GCA_123456789.1',bioproject='PRJEB123456', locus_tag_prefix='TEST', output_dir=str(self.root/'out'))
 
     def test_unversioned_header_with_explicit_predictor(self):
         self.source.write_text(self.source.read_text().replace('ANNEVO v2.2.3.', 'ANNEVO.'))
@@ -70,7 +70,7 @@ class PredictorModelTests(unittest.TestCase):
         tsv.write_text('input\tassembly_accession\tlocus_tag_prefix\tpredictor_model\ninput.gff\tGCA_123456789.1\tTEST\tInsecta\n')
         import contextlib,io
         with contextlib.redirect_stdout(io.StringIO()):
-            code=g.batch_prepare(tsv, {'out_root':str(self.root/'batch')}, self.root/'summary.json')
+            code=g.batch_prepare(tsv, {'bioproject':'PRJEB123456','out_root':str(self.root/'batch')}, self.root/'summary.json')
         self.assertEqual(code,0)
         self.assertTrue((self.root/'batch/GCA_123456789.1.ANNEVO.2.2.3.Insecta/manifest.txt').exists())
 

@@ -1,1 +1,13 @@
-{"toolkit_version":"0.8.0","revision":"ENA-only development patch","automated_tests":{"command":"python3 -m unittest discover -s tests","test_count":212,"status":"passed","network_required":false},"live_ena_test":"not run in this environment","webin_validation":"not run for this revision"}
+{
+  "toolkit_version": "0.8.0",
+  "revision": "Mandatory study and documentation review",
+  "automated_tests": {
+    "command": "python3 -m unittest discover -s tests",
+    "test_count": 218,
+    "status": "passed",
+    "network_required": false
+  },
+  "live_ena_test": "not run in this environment",
+  "webin_validation": "not run for this revision",
+  "synthetic_cli_smoke_test": "passed; manifest contains STUDY"
+}

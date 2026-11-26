@@ -11,7 +11,7 @@ class FormatTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.input=self.root/'input.gff'
-        self.settings=dict(input=str(self.input),assembly_accession='GCA_123456789.1',locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/'out'))
+        self.settings=dict(input=str(self.input),assembly_accession='GCA_123456789.1',bioproject='PRJEB123456',locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/'out'))
     def run_text(self, text, **kw):
         self.input.write_text('##gff-version 3\n##sequence-region s 1 1000\n'+text)
         result=g.prepare_package({**self.settings,**kw})

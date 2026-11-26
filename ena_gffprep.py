@@ -142,9 +142,7 @@ def resolve_settings(settings):
     for key in ['assembly_accession', 'locus_tag_prefix']:
         check(s.get(key), '--'+key.replace('_','-')+' is required (CLI, config or batch row)')
     check(re.fullmatch(r'GCA_\d{9}\.\d+', s['assembly_accession']) is not None, 'Use a GCA assembly accession with version')
-    if s.get('bioproject'):
-        check(isinstance(s['bioproject'], str) and re.fullmatch(r'PRJ(?:EB|NA|DB)\d+', s['bioproject']) is not None,
-              '--bioproject must be a BioProject accession (e.g. PRJEB123456)')
+    core.validate_bioproject(s.get('bioproject'))
     for key, default in [('translation_table',1), ('width',6), ('start',1), ('step',1)]:
         s[key] = int(s.get(key, default))
     s['taxon_id'] = int(s['taxon_id']) if s.get('taxon_id') is not None else None
@@ -299,7 +297,7 @@ def parser():
                   'normalization':'Source-independent structural policy: standard (default) or strict (no type/phase/CDS-group rewrites).',
                   'cds_grouping':'auto (default), single-product or preserve; overrides require standard normalization.',
                   'prediction_method':'auto, ab-initio, evidence-assisted or unspecified; controls default description and inference policy.',
-                  'bioproject':'BioProject accession (PRJEB/PRJNA/PRJDB); populates STUDY in the Webin annotation manifest.',
+                  'bioproject':'Required for preparation (CLI, config or batch row); BioProject accession (PRJEB/PRJNA/PRJDB), written as STUDY. Not required for audit.',
                   'predictor_model':'Model used by the predictor; recorded in default filename, NAME and DESCRIPTION.',
                   'organelle_metadata':'Offline ENA sequence report TSV; requires --remove-organelles.',
                   'organelle_cache_dir':'Directory for exact-assembly metadata cache; requires --remove-organelles.'}.get(key))

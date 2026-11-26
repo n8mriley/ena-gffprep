@@ -12,6 +12,20 @@ Representation changes can include feature types, identifiers, attributes and
 sequence-name mappings. Optional organelle removal excludes whole sequences'
 annotation records. Short predictions are not removed to silence validation.
 
+## Scope and maturity
+
+The primary application is formatting existing deep-learning and ab initio
+nuclear genome annotations for ENA submission (e.g. ANNEVO, Helixer, Tiberius
+ab initio output, OrionGeno and Carbon-A). Format recognition and shared
+normalization are not guarantees of end-to-end submission compatibility.
+
+**Experimental compatibility:** BRAKER and other evidence-based or mixed
+annotations have not been fully tested. Their existing evidence and product
+relationships need careful review; use the appropriate explicit provenance
+policy and validate each output. More comprehensive evidence-based annotation
+support and testing are planned. Do not treat successful preparation as proof
+that evidence semantics or biological models are correct.
+
 ## Start here
 
 For an automatically recognized annotation with a supported provenance policy:
@@ -20,11 +34,12 @@ For an automatically recognized annotation with a supported provenance policy:
 python3 ena_gffprep.py \
   --input annotation.gff3 \
   --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
   --locus-tag-prefix YOURPREFIX
 ```
 
-Replace the example accession and prefix with the exact assembly version and
-your registered prefix. Input may be plain text or gzip-compressed (`.gz`).
+Replace the example accessions and prefix with the exact GCA assembly version,
+the study your submission account can reference, and your registered prefix. Input may be plain text or gzip-compressed (`.gz`).
 The `.gff` or `.gff3` extension does not determine its syntax.
 
 Add metadata when it is known, for example:
@@ -38,15 +53,17 @@ describe the software actually used. The model is optional and requires both;
 it records a model label, not the organism or a model to run. Versions are never
 guessed from filenames, model names or the GFF version directive.
 
-For a BRAKER-compatible file, identify the pipeline explicitly and choose an
-inference policy, for example preserving existing evidence without additions:
+For an experimental BRAKER-compatible preparation, identify the pipeline explicitly and choose an
+inference policy, for example preserving existing evidence without additions
+(replace ACTUAL_VERSION with the version used):
 
 ```bash
 python3 ena_gffprep.py \
   --input braker.gff3 \
   --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
   --locus-tag-prefix YOURPREFIX \
-  --predictor BRAKER --predictor-version 4 \
+  --predictor BRAKER --predictor-version ACTUAL_VERSION \
   --no-inference
 ```
 
@@ -56,7 +73,7 @@ ANNEVO header and inference handling is retained, but structural normalization i
 
 | Information | Requirement |
 | --- | --- |
-| Annotation, assembly accession, locus-tag prefix | Required; provide through CLI, configuration or a batch row. GCA/GCF syntax is accepted; use the primary accession appropriate to your ENA submission. |
+| Annotation, versioned GCA assembly accession, BioProject, locus-tag prefix | Required for preparation; supply via CLI, configuration or batch row. BioProject syntax is checked locally; study existence and account permissions are checked by Webin. |
 | Prediction provenance | Automatic for supported direct sources, with the ANNEVO exception above; other inputs need an explicit policy. See [provenance](#prediction-provenance). |
 | Sequence lengths | Required, but an index is optional. Local lengths or exact-assembly ENA fallback can supply them. |
 | Previous locus-tag map | Supply the complete cumulative map when updating an annotation. |
@@ -249,33 +266,9 @@ or another deliberate strategy. Taxonomy lookup is not inferred from a species
 name: Helixer's name-only directive is omitted with a warning if no taxon is
 provided, while an explicit taxon produces a canonical URI.
 
-Choose automatic identification or explicitly supplied sequence IDs:
-
-```bash
-# Automatic identification from complete ENA metadata:
---remove-organelles
-
-# Manual exclusion of exact input IDs (replace these example accessions):
---remove-organelles OV123456.1,OV123457.1
-```
-
-Manual IDs match column 1 or an input `##sequence-region` declaration exactly,
-including accession versions. Unknown names, empty entries and duplicate names
-are rejected. No name/size heuristics or automatic alias matching are used in
-manual mode. The list is your assertion that these sequences should be excluded;
-retained sequences are not thereby established as nuclear.
-
-Manual filtering bypasses organelle identification, but missing retained sequence
-lengths can still trigger ENA lookup. For offline preparation, provide lengths in
-the input or via `--fai`/`--assembly-report`, and add `--no-ena-lengths` to prevent
-length lookup. Do not combine manual IDs with organelle-specific metadata/cache
-options; general sequence metadata/cache options remain available for lengths.
-
-The assembly itself and manifest PRIMARY_ID are unchanged. Reports record the
-exclusions and whether their source was manual or automatic. A manual TSV entry
-has an empty `ena_sequence` and `location` set to `manual exclusion`. See
-[ORGANELLES.md](ORGANELLES.md) for classification, reference checks and tag
-reservation.
+For automatic/manual exclusion examples, classification rules, offline operation
+and tag reservation, see [ORGANELLES.md](ORGANELLES.md). The assembly and
+manifest PRIMARY_ID remain unchanged.
 
 ## Locus tags
 
@@ -305,7 +298,7 @@ for a rerun. The input annotation is not overwritten.
 | File | Contents |
 | --- | --- |
 | `LABEL.ena.gff3.gz` | Prepared annotation. |
-| `manifest.txt` | Tab-separated NAME, STUDY (when --bioproject is supplied), GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. Webin CLI 11 requires STUDY for submission; supply --bioproject to include it. The GFF3 path is relative to the manifest. |
+| `manifest.txt` | Tab-separated NAME, STUDY, GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. The GFF3 path is relative to the manifest. |
 | `locus_tags.tsv` | Cumulative `gene_id`, `locus_tag`, `status` map, including reserved entries. |
 | `preparation.json` | Input hashes, settings, source detection, transformations, lengths, provenance, warnings and advisory checks. |
 | `preparation.txt` | Human-readable preparation summary. |
@@ -325,13 +318,6 @@ NAME defaults to `LABEL decoupled annotation`. DESCRIPTION starts with either:
 - `Genome annotation prepared for ENA decoupled submission.` for other methods.
 
 Available metadata is appended as `Annotator: NAME Version: VERSION Model: MODEL`.
-For example, `--predictor BRAKER --predictor-version 4 --no-inference` on a detected
-BRAKER-compatible input produces:
-
-```text
-Genome annotation prepared for ENA decoupled submission. Annotator: BRAKER Version: 4
-```
-
 | Option | Default / effect |
 | --- | --- |
 | `--predictor NAME` | Detected where supported; explicit pipeline metadata can override component names, except conflicting ANNEVO headers. |
@@ -342,7 +328,7 @@ Genome annotation prepared for ENA decoupled submission. Annotator: BRAKER Versi
 | `--output-dir PATH` | Exact new package directory; overrides out-root/label directory placement, not the filename. |
 | `--name "TEXT"` | Override manifest NAME. |
 | `--description "TEXT"` | Override DESCRIPTION completely; metadata is not automatically appended to custom text. |
-| `--bioproject PRJEB123456` | BioProject accession written as STUDY in the annotation manifest. Accepted prefixes: PRJEB, PRJNA, PRJDB. Supported in CLI, JSON defaults, and batch TSV. Supply for Webin CLI 11.0.0. |
+| `--bioproject PRJEB123456` | Required BioProject accession, written as STUDY. Accepted prefixes: PRJEB, PRJNA, PRJDB. |
 | `--assembly-accession ACCESSION` | Required versioned assembly accession; written as PRIMARY_ID. |
 
 Compressed GFF bytes are reproducible for identical input/settings because gzip
@@ -368,7 +354,7 @@ comma-separated string of exact sequence IDs for manual filtering (see
 
 ```bash
 python3 ena_gffprep.py --config defaults.json --input annotation.gff3 \
-  --assembly-accession GCA_123456789.1 --locus-tag-prefix YOURPREFIX
+  --assembly-accession GCA_123456789.1 --bioproject PRJEB123456 --locus-tag-prefix YOURPREFIX
 ```
 
 A batch TSV needs an `input` column. Required job values can be inherited from
@@ -398,7 +384,7 @@ for multiple jobs; use out-root and individual labels instead.
 
 ## Audit and explicit outputs
 
-Audit requires only an input and a new report path:
+Audit requires only an input and a new report path (no BioProject):
 
 ```bash
 python3 ena_gffprep.py --input annotation.gff3 --audit-only --report audit.json
@@ -453,3 +439,19 @@ The tool does not establish nucleotide identity, translation correctness,
 biological partiality, all vocabularies, prefix ownership or archive acceptance.
 Product names and protein IDs are not invented by default. See also
 [LOCUS_TAGS.md](LOCUS_TAGS.md), [ORGANELLES.md](ORGANELLES.md) and [CHANGELOG.md](CHANGELOG.md).
+
+## Code layout
+
+| Component | Responsibility |
+| --- | --- |
+| `ena_gffprep.py` | CLI, configuration and batch resolution, provenance and package naming. |
+| `ena_gffprep_core.py` | Parse feature graphs, validate metadata and relationships, allocate tags, write GFF3 and reports. |
+| `ena_formats.py` | Detect input syntax and predictor provenance; construct GTF relationships. |
+| `ena_normalize.py` | Source-independent structural transformations. |
+| `ena_organelles.py` | ENA sequence reports, caching, alias matching and sequence exclusion. |
+| `ena_common.py` | Shared I/O, validation and staged publication helpers. |
+| `run_bundled_validator.py` | Run local rules from a separately supplied Webin JAR. |
+| `ena_validation_review.py` | Associate validator diagnostics with features. |
+| `ena_add_inference.py` | Optional explicit inference addition to a separate GFF3 copy. |
+
+See [VALIDATION.md](VALIDATION.md#automated-tests-and-scope) for the regression suite.

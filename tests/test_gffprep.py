@@ -32,7 +32,7 @@ class Tests(unittest.TestCase):
             locus_tag_prefix='TEST', width=6, start=1, step=1, taxon_id=9606,
             translation_table=1, locus_tag_map=None, assembly_report=None,
             accession_column='genbank', fai=None, strict_warnings=False,
-            default_product=None, assembly_accession=None, manifest=None,
+            default_product=None, assembly_accession=None,bioproject='PRJEB123456', manifest=None,
             name='Test', description='Test')
         for k,v in kw.items():
             setattr(a,k,v)
