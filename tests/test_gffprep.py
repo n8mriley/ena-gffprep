@@ -81,9 +81,9 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(m.Invalid,'Embedded FASTA'):
             self.runprep(BASE+'##FASTA\n>seq1\nACGT\n')
     def test_report_remap(self):
-        p=self.d/'assembly_report.txt'
-        p.write_text('seq1\tassembled-molecule\t1\tChromosome\tAB123456.1\t=\tNC_000001.1\tPrimary Assembly\t1000\tchr1\n')
-        _,_,o=self.runprep(assembly_report=str(p))
+        p=self.d/'GCA_123456789.1_sequence_report.txt'
+        p.write_text('accession\tsequence-name\tsequence-length\tsequence-role\treplicon-name\treplicon-type\tassembly-unit\nAB123456.1\tseq1\t1000\tassembled-molecule\t1\tChromosome\tPrimary Assembly\n')
+        _,_,o=self.runprep(assembly_report=str(p),assembly_accession="GCA_123456789.1")
         self.assertIn('##sequence-region AB123456.1 1 1000',o)
         self.assertNotIn('\nseq1\t',o)
     def test_idempotent(self):

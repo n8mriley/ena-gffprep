@@ -381,47 +381,28 @@ def lengths(args, regions, seqids=None):
     Matching names and lengths do not prove sequence identity with an ENA assembly."""
     aliases, sizes, fai_seen = {}, {}, set()
     report_accessions = []
-    if args.assembly_report:
-        with opened(args.assembly_report) as f:
-            for line in f:
-                if line.startswith('#'):
-                    match = re.match(r'# (?:GenBank|RefSeq) assembly accession:\s+(GC[AF]_[0-9]+\.[0-9]+)', line)
-                    if match:
-                        report_accessions.append(match[1])
-                    continue
-                if not line.strip():
-                    continue
-                c = line.rstrip('\r\n').split('\t')
-                require(len(c) >= 9, 'Assembly report needs standard NCBI columns')
-                target = c[4] if args.accession_column == 'genbank' else c[6]
-                require(target != 'na', f'No {args.accession_column} accession for {c[0]}')
-                size = int(c[8])
-                require(size > 0 and target not in sizes, f'Duplicate target or invalid length: {target}')
-                sizes[target] = size
-                for alias in [c[0], c[4], c[6]] + ([c[9]] if len(c) > 9 else []):
-                    if alias != 'na':
-                        require(alias not in aliases or aliases[alias] == target, f'Ambiguous alias {alias}')
-                        aliases[alias] = target
-        if args.assembly_accession and report_accessions:
-            require(args.assembly_accession in report_accessions, 'Assembly accession disagrees with assembly-report header')
+    ena = None
+    if args.assembly_report or getattr(args,'sequence_metadata',None):
+        from ena_organelles import sequence_lengths
+        aliases, sizes, ena = sequence_lengths(args, set(seqids), regions)
+        report_accessions = [args.assembly_accession]
     if args.fai:
         with opened(args.fai) as f:
             for line in f:
                 c = line.rstrip('\r\n').split('\t')
                 require(len(c) >= 2 and c[0] and not re.search(r'\s',c[0]), 'Malformed FAI row')
                 require(bool(re.fullmatch(r'[0-9]+',c[1])), 'FAI length must be an integer')
-                if args.assembly_report:
-                    require(c[0] in aliases, f'FAI ID absent from assembly report: {c[0]}')
+                if ena is not None and c[0] not in aliases and c[0] not in sizes:
+                    continue  # FAI may include unannotated/excluded assembly sequences
                 seq, size = aliases.get(c[0], c[0]), int(c[1])
                 require(size > 0 and seq not in fai_seen, f'Duplicate FAI ID or invalid length: {seq}')
                 require(seq not in sizes or sizes[seq] == size, f'Length mismatch for {seq}')
                 sizes[seq] = size
                 fai_seen.add(seq)
-    ncbi = None
     # Explicit external files remain authoritative: never hide missing FAI/report IDs.
-    if not args.assembly_report and not args.fai and seqids and any(seq not in regions for seq in seqids) and getattr(args,'ncbi_lengths',False):
+    if ena is None and not args.fai and seqids and any(seq not in regions for seq in seqids) and getattr(args,'ena_lengths',False):
         from ena_organelles import sequence_lengths
-        aliases, sizes, ncbi = sequence_lengths(args, set(seqids), regions)
+        aliases, sizes, ena = sequence_lengths(args, set(seqids), regions)
     external = bool(args.assembly_report or args.fai)
     for old, size in regions.items():
         seq = aliases.get(old, old)
@@ -433,15 +414,15 @@ def lengths(args, regions, seqids=None):
         if not external:
             sizes[seq] = size
     require(sizes, 'No sequence lengths available')
-    return aliases, sizes, {'fai_ids': fai_seen, 'assembly_report_accessions': report_accessions, 'ncbi_sequence_report': ncbi}
+    return aliases, sizes, {'fai_ids': fai_seen, 'assembly_report_accessions': report_accessions, 'ena_sequence_report': ena}
 
 
 def prepare(args):
     """Prepare GFF3, locus tags, manifest and reports from an argument namespace.
     
-    CLI-resolved options enable exact-assembly NCBI fallback for missing lengths.
-    Direct API callers opt in with ncbi_lengths=True.
-    Optionally remove NCBI-classified organelle predictions before adaptation.
+    CLI-resolved options enable exact-assembly ENA fallback for missing lengths.
+    Direct API callers opt in with ena_lengths=True.
+    Optionally remove ENA-classified organelle predictions before adaptation.
     Validate the retained feature graph, apply supported representation changes, propagate
     submission metadata and stage outputs. Preserve prediction coordinates and
     retain biological QC findings as warnings unless strict warning mode is chosen.
@@ -455,7 +436,7 @@ def prepare(args):
         require(bool(inference.strip()) and all(32 <= ord(c) <= 126 for c in inference), '--inference must be nonempty ASCII without controls')
     require(args.translation_table in TRANSLATION_TABLES, 'Translation table is not in the supported NCBI registry')
     if args.assembly_accession:
-        require(bool(re.fullmatch(r'GC[AF]_[0-9]+\.[0-9]+', args.assembly_accession)), 'Assembly accession must be GCA_/GCF_ accession.version')
+        require(bool(re.fullmatch(r'GCA_[0-9]{9}\.[0-9]+', args.assembly_accession)), 'Assembly accession must be GCA_ accession.version')
     from ena_organelles import manual_sequence_ids
     manual_sequence_ids(getattr(args, 'remove_organelles', False))
     remove_organelles = bool(getattr(args, 'remove_organelles', False))
@@ -464,7 +445,7 @@ def prepare(args):
     outputs = [args.output, args.write_locus_tag_map, args.report] + ([args.manifest] if args.manifest else [])
     if organelle_report:
         outputs.append(organelle_report)
-    args._ncbi_sequence_metadata = None  # never reuse metadata across distinct preparations
+    args._ena_sequence_metadata = None  # never reuse metadata across distinct preparations
     inputs = [args.input, args.locus_tag_map, args.assembly_report, args.fai, getattr(args, 'inference_map', None), getattr(args, 'sequence_metadata', None)]
     if remove_organelles and getattr(args, 'organelle_metadata', None):
         inputs.append(args.organelle_metadata)
@@ -520,7 +501,7 @@ def prepare(args):
     aliases, sizes, length_checks = lengths(args, regions, {r['c'][0] for r in rows})
     if organelle_filter:
         for seq, expected in organelle_filter['matched_sequence_lengths'].items():
-            require(sizes.get(aliases.get(seq,seq)) == expected, 'External/GFF length disagrees with NCBI metadata: '+seq)
+            require(sizes.get(aliases.get(seq,seq)) == expected, 'External/GFF length disagrees with ENA metadata: '+seq)
     warnings, notes = [], []
     if flexible:
         phases = sum(r.get('normalized_phase', False) for r in rows)
@@ -538,7 +519,7 @@ def prepare(args):
     if organelle_filter and organelle_filter['unclassified_retained_sequences']:
         warnings.append('Organelle status is unspecified for retained primary-assembly scaffolds: '+', '.join(organelle_filter['unclassified_retained_sequences']))
     removed_comments = []
-    if comment_sizes and not args.assembly_report and not args.fai and not length_checks['ncbi_sequence_report']:
+    if comment_sizes and not args.assembly_report and not args.fai and not length_checks['ena_sequence_report']:
         warnings.append('Sequence lengths came only from ANNEVO comments; confirm against the exact submitted assembly before submission.')
     if source_format == 'annevo':
         # Reordering invalidates position-dependent prediction comments. Retain only provenance.
@@ -724,7 +705,7 @@ def prepare(args):
               'normalization': {'engine':'structural', 'mode':normalization_mode,
                                 'input_format':getattr(args,'input_format','auto'),
                                 'cds_grouping':getattr(args,'cds_grouping','auto'), 'rules':normalization_rules},
-              'sequence_lengths_source': 'ncbi_sequence_report' if length_checks['ncbi_sequence_report'] else 'assembly_report' if args.assembly_report else 'fai' if args.fai else 'annevo_comments' if comment_sizes else 'sequence_region',
+              'sequence_lengths_source': 'ena_sequence_report' if length_checks['ena_sequence_report'] else 'assembly_report' if args.assembly_report else 'fai' if args.fai else 'annevo_comments' if comment_sizes else 'sequence_region',
               'genes': len(active),
               'feature_rows': sum(len(v) for v in nodes.values()), 'shared_features_split': normalization_rules.get('shared_features_split',0),
               'reserved_retired_gene_ids': sorted(set(mapping) - active_set), 'warnings': warnings, 'notes': notes,
@@ -749,8 +730,8 @@ def prepare(args):
                   'Sequence/assembly association and development-environment availability',
                   'Official gff3tools or Webin validation; no submission performed'],
               'validation_scope': 'Structural preparation only; official vocabulary, sequence translations, minimum biological specifications and Webin acceptance are not validated.'}
-    if length_checks['ncbi_sequence_report'] is not None:
-        report['ncbi_sequence_lengths'] = length_checks['ncbi_sequence_report']
+    if length_checks['ena_sequence_report'] is not None:
+        report['ena_sequence_lengths'] = length_checks['ena_sequence_report']
     if organelle_filter is not None:
         report['organelle_filter'] = organelle_filter
     if args.strict_warnings:

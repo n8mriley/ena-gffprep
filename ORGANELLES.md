@@ -31,7 +31,7 @@ python3 ena_gffprep.py \
   --locus-tag-prefix YOURPREFIX \
   --no-inference \
   --remove-organelles OV123456.1,OV123457.1 \
-  --no-ncbi-lengths
+  --no-ena-lengths
 ```
 
 All accessions above are examples. Replace them with the assembly and sequence
@@ -50,7 +50,7 @@ list of sequences you intend to exclude; unlisted sequences are retained. The
 shared relationship and tag safeguards below apply to both modes.
 
 Sequence lengths are still required for retained annotations. Missing lengths can
-trigger an independent NCBI lookup even in manual mode. `--no-ncbi-lengths`
+trigger an independent ENA lookup even in manual mode. `--no-ena-lengths`
 prevents that lookup: use valid input lengths or supply `--fai` or
 `--assembly-report` from the actual reference assembly. Complete offline
 `--sequence-metadata` is also supported for length fallback when fallback is
@@ -64,10 +64,10 @@ the annotation matches that reference.
 
 ## Automatic metadata and matching
 
-With bare `--remove-organelles`, the exact assembly's NCBI Datasets sequence report is loaded from the shared
+With bare `--remove-organelles`, the exact assembly's ENA sequence report is loaded from the shared
 cache, fetched over HTTPS or read from a complete offline report. It is also
 reused if sequence-length fallback needs it. See the README's
-[sequence metadata section](README.md#sequence-lengths-and-ncbi-metadata) for
+[sequence metadata section](README.md#sequence-lengths-and-ena-metadata) for
 cache locations, refresh, offline formats and general options.
 
 The general `--sequence-metadata`, `--sequence-cache-dir` and
@@ -77,14 +77,14 @@ names remain supported and require the removal flag. General and specific paths
 must agree when both are supplied. Offline metadata and refresh are incompatible.
 
 All annotated sequence IDs must match exactly one metadata record using its
-GenBank accession, RefSeq accession, original name or UCSC-style alias. Accession
+versioned INSDC accession or ENA sequence-name. Accession
 versions are not stripped. Wrong assembly versions, unmatched/ambiguous aliases,
 conflicting declared lengths and retained external-length disagreements fail.
 A paired GCA/GCF accession is not silently substituted for the requested one.
 
 ## Automatic classification policy
 
-Classification uses `assigned_molecule_location_type` (or camelCase equivalent),
+Classification uses `replicon-type` and `assembly-unit`,
 not sequence names, length, gene content or `non-nuclear` alone.
 
 Supported organelle locations include mitochondrion, chloroplast, plastid,
@@ -94,7 +94,7 @@ listed in `ena_organelles.ORGANELLES`.
 
 An unplaced/unlocalized scaffold in Primary Assembly with an unspecified
 location is retained and reported as unclassified, with a warning. Other
-missing or unsupported compartment classifications fail. NCBI misclassification
+missing or unsupported compartment classifications fail. ENA misclassification
 or absent labels can therefore leave organelles undetected; the filter does not
 certify every retained sequence as nuclear.
 
@@ -122,7 +122,7 @@ can be resolved safely. See [LOCUS_TAGS.md](LOCUS_TAGS.md).
 ## Network failures
 
 Automatic filtering requires a complete usable report from cache, an offline
-file or NCBI. A network/server error or incomplete response stops preparation;
+file or ENA. A network/server error or incomplete response stops preparation;
 it is not treated as evidence that the assembly contains no organelles. Retry
 later, supply a complete offline sequence report, or use manually confirmed
 sequence IDs. Cached reports remain useful during outages; refresh requires a
@@ -135,7 +135,7 @@ Normal package mode adds `organelle_exclusions.tsv`:
 | Column | Meaning |
 | --- | --- |
 | `seqid` | Original GFF sequence ID. |
-| `ncbi_sequence` | Canonical metadata accession in automatic mode; empty in manual mode. |
+| `ena_sequence` | Canonical metadata accession in automatic mode; empty in manual mode. |
 | `location` | Metadata classification in automatic mode; `manual exclusion` in manual mode. |
 | `feature_rows` | Number of removed rows on that sequence. |
 | `genes` | Number of removed logical genes. |
@@ -177,5 +177,4 @@ Validate each prepared annotation using [VALIDATION.md](VALIDATION.md).
 
 References:
 
-- [NCBI genome sequence reports](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/)
-- [NCBI Datasets REST API](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/api/rest-api/)
+- [ENA sequence report documentation](https://ena-browser-docs.readthedocs.io/en/latest/browser/ena-record.html)

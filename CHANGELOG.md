@@ -1,3 +1,10 @@
+## Unreleased — ENA-only metadata
+
+- Replace NCBI assembly metadata retrieval and parsing with ENA sequence-report TSV.
+- Use versioned GCA accessions and separate ENA caches; remove RefSeq output selection.
+- Rename `--no-ncbi-lengths` to `--no-ena-lengths` and report keys to ENA equivalents.
+- Preserve local length inputs and manual organelle exclusions.
+
 # Changelog
 
 ## Unreleased — Manual organelle exclusions

@@ -25,19 +25,19 @@ class ManualOrganelleTests(unittest.TestCase):
 
     def test_manual_filter_without_network(self):
         with patch.object(o, 'load_metadata', side_effect=AssertionError('No lookup')):
-            a, report, out = self.runprep(fixtures.TEXT, remove_organelles='mt', no_ncbi_lengths=True)
+            a, report, out = self.runprep(fixtures.TEXT, remove_organelles='mt', no_ena_lengths=True)
         self.assertNotIn('\nmt\t', out)
         self.assertNotIn('##sequence-region mt ', out)
         info = report['organelle_filter']
         self.assertEqual(info['source'], 'manual')
         self.assertEqual(info['removed_feature_rows'], 3)
         self.assertEqual(info['removed_genes'], 1)
-        self.assertEqual(info['excluded_sequences'][0]['ncbi_sequence'], '')
+        self.assertEqual(info['excluded_sequences'][0]['ena_sequence'], '')
         self.assertEqual(info['requested_sequence_ids'], ['mt'])
 
     def test_header_only_and_multiple(self):
         text = fixtures.TEXT + '##sequence-region pt 1 1000\n'
-        _, report, out = self.runprep(text, remove_organelles='mt,pt', no_ncbi_lengths=True)
+        _, report, out = self.runprep(text, remove_organelles='mt,pt', no_ena_lengths=True)
         self.assertNotIn('##sequence-region pt ', out)
         self.assertEqual(len(report['organelle_filter']['excluded_sequences']), 2)
 

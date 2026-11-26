@@ -58,7 +58,7 @@ ANNEVO header and inference handling is retained, but structural normalization i
 | --- | --- |
 | Annotation, assembly accession, locus-tag prefix | Required; provide through CLI, configuration or a batch row. GCA/GCF syntax is accepted; use the primary accession appropriate to your ENA submission. |
 | Prediction provenance | Automatic for supported direct sources, with the ANNEVO exception above; other inputs need an explicit policy. See [provenance](#prediction-provenance). |
-| Sequence lengths | Required, but an index is optional. Local lengths or exact-assembly NCBI fallback can supply them. |
+| Sequence lengths | Required, but an index is optional. Local lengths or exact-assembly ENA fallback can supply them. |
 | Previous locus-tag map | Supply the complete cumulative map when updating an annotation. |
 | Taxon ID, model, output directory, product fallback | Optional. |
 
@@ -71,8 +71,8 @@ After preparation, review the reports and [validate the generated manifest](VALI
 - Supported GFF3 or quoted GTF with explicit gene/transcript containers. Arbitrary
   GFF2, embedded sequences and some specialist locations are not supported.
   Text must meet the scripts' ASCII checks.
-- Outbound HTTPS for an uncached NCBI lookup, or a complete offline sequence
-  report. No NCBI CLI or credentials are needed.
+- Outbound HTTPS for an uncached ENA lookup, or a complete offline sequence
+  report. No external CLI or credentials are needed.
 - Java **17+** and a separately obtained compatible Webin JAR for validation.
   Neither is required for Python preparation; the JAR is not included.
 
@@ -196,57 +196,37 @@ Inference describes the prediction method; it does not prove expression or
 biological correctness. Choosing no-inference may leave short-CDS evidence
 requirements unresolved in the external validator.
 
-## Sequence lengths and NCBI metadata
+## Sequence lengths and ENA metadata
 
-Length sources have this priority:
-
-1. Explicit `--fai` and/or `--assembly-report`; both must agree when supplied.
-2. Input `##sequence-region` declarations and recognized ANNEVO length comments.
-3. Exact-assembly NCBI sequence metadata when retained annotated sequences still
-   lack lengths and no explicit external length file was supplied.
-
-Missing IDs in an explicit FAI/report remain errors. Partial input declarations
-are checked against NCBI if fallback is needed. Complete local lengths avoid a
-length lookup. Lengths are never estimated from feature coordinates.
-
-A FAI supplies bounds without reading nucleotide sequences. An assembly report
-also maps aliases to the requested accession column. NCBI fallback matches exact
-GenBank/RefSeq accessions, original sequence names and UCSC-style aliases; it
-never strips accession versions. It maps column 1 and output declarations to
-GenBank accessions where available, otherwise the available canonical accession;
-`--accession-column refseq` requests RefSeq instead. Missing/ambiguous matches,
-length conflicts and coordinates beyond sequence bounds stop preparation.
+ENA is the only remote assembly metadata provider. Exact versioned GCA sequence
+reports are downloaded over HTTPS from the ENA assembly directory. No NCBI
+API, JSON/JSONL, RefSeq accession mapping or NCBI assembly report is supported.
+Local FAI, sequence-region directives and recognized ANNEVO comments remain
+supported; automatic ENA length lookup is needed when local lengths are missing.
+Explicit offline reports also enable accession mapping. Missing or ambiguous
+aliases and conflicting lengths stop preparation. ENA chromosome names may differ
+from original submitted scaffold names; use versioned INSDC accessions directly.
 
 | Option | Default / effect |
 | --- | --- |
-| `--fai PATH` | Optional existing sequence-name/length index. |
-| `--assembly-report PATH` | Optional standard NCBI assembly report for the exact assembly. |
-| `--accession-column genbank\|refseq` | `genbank`; target for assembly-report and NCBI-fallback mapping. |
-| `--use-annevo-lengths` | Automatic without FAI/report in ANNEVO mode; an explicit request requires matching comments and ANNEVO metadata handling. Can also cross-check an external source. |
-| `--no-ncbi-lengths` | Off; disables NCBI length fallback, including reuse of filtering metadata for missing lengths. Does not disable requested organelle filtering. |
-| `--sequence-metadata PATH` | Optional complete offline NCBI sequence-report JSON/JSONL or tool cache file. |
-| `--sequence-cache-dir PATH` | Optional shared cache override. |
-| `--refresh-sequence-cache` | Off; fetch fresh metadata when a lookup is needed. Incompatible with offline metadata. |
+| `--fai PATH` | Optional local sequence length index. |
+| `--assembly-report PATH` | Local ENA TSV report; compatibility name. |
+| `--sequence-metadata PATH` | Complete local ENA TSV named `GCA_..._sequence_report.txt` for the exact version. |
+| `--no-ena-lengths` | Disable automatic ENA length lookup, not automatic organelle filtering. |
+| `--use-annevo-lengths` | Recognized ANNEVO length comments. |
+| `--sequence-cache-dir PATH` | Override shared ENA metadata cache. |
+| `--refresh-sequence-cache` | Refresh when lookup is required. |
 
-The default cache is `$XDG_CACHE_HOME/ena-gffprep/ncbi-sequences/`, or
-`~/.cache/ena-gffprep/ncbi-sequences/` if unset. Each versioned assembly has its
-own JSON file. Reports do not expire automatically. A corrupt cache or failed
-lookup stops preparation; refresh does not silently reuse old data. Offline
-metadata is not supplemented from the network. HTTPS requests use a 30-second
-timeout per attempt and up to three attempts for transient failures.
-
-Offline files must contain complete sequence reports, not assembly summaries
-or hand-selected organelle records. Snake_case API JSON and camelCase Datasets
-JSONL are accepted. Pagination/count checks reject detectable partial responses;
-JSONL has no independent completeness marker. Every record must identify the
-exact assembly version and a positive length. Length-only use does not require
-organelle classifications.
-
-Automatic organelle removal and length fallback share one loaded report. Their general
-and organelle-specific metadata/cache paths must agree if both are supplied.
-Preserve the exact metadata file: the preparation report records its path,
-SHA-256, source, retrieval information and matched sequences. Metadata matching
-does not prove nucleotide identity with the archived assembly.
+The default cache is `$XDG_CACHE_HOME/ena-gffprep/ena-sequences/` (or
+`~/.cache/ena-gffprep/ena-sequences/`). It stores the original TSV with exact
+versioned filename. Old NCBI caches are not read. Offline filenames are checked,
+but the TSV does not independently encode the assembly accession or total count;
+use the original complete ENA download, not a renamed or subset report.
+Reports are checked for schema, unique versioned accessions, positive lengths,
+and all required annotated IDs. A truncated report ending on a complete row
+may not be detectable without an independent checksum or record count.
+Automatic filtering and length fallback share one report. Provenance records
+path, SHA-256, source and matches. Local metadata cannot establish nucleotide identity.
 
 ## Optional annotation metadata and filtering
 
@@ -255,7 +235,7 @@ does not prove nucleotide identity with the archived assembly.
 | `--taxon-id INTEGER` | Optional positive taxon ID; adds a canonical `##species` URI. Otherwise a recognized input URI is preserved, or the directive is omitted. Taxonomy conflicts fail. |
 | `--translation-table INTEGER` | `1`; fallback for translating CDSs without a table. Existing supported per-CDS tables are preserved; pseudogenic CDSs omit them. |
 | `--default-product "TEXT"` | No default; fills missing CDS products only when explicitly requested. Existing products are retained. |
-| `--remove-organelles [SEQID[,SEQID...]]` | Off when omitted. With no value, identify organelles from NCBI metadata. With a value, exclude the exact input sequence IDs listed, without an organelle metadata lookup. Both modes run before normalization and new tag allocation. |
+| `--remove-organelles [SEQID[,SEQID...]]` | Off when omitted. With no value, identify organelles from ENA metadata. With a value, exclude the exact input sequence IDs listed, without an organelle metadata lookup. Both modes run before normalization and new tag allocation. |
 | `--organelle-metadata PATH` | Filtering-specific name for an offline sequence report; requires automatic mode (bare `--remove-organelles`). |
 | `--organelle-cache-dir PATH` | Filtering-specific cache override; requires automatic mode (bare `--remove-organelles`). |
 | `--refresh-organelle-cache` | Filtering-specific refresh flag; requires automatic mode (bare `--remove-organelles`). |
@@ -272,7 +252,7 @@ provided, while an explicit taxon produces a canonical URI.
 Choose automatic identification or explicitly supplied sequence IDs:
 
 ```bash
-# Automatic identification from complete NCBI metadata:
+# Automatic identification from complete ENA metadata:
 --remove-organelles
 
 # Manual exclusion of exact input IDs (replace these example accessions):
@@ -286,14 +266,14 @@ manual mode. The list is your assertion that these sequences should be excluded;
 retained sequences are not thereby established as nuclear.
 
 Manual filtering bypasses organelle identification, but missing retained sequence
-lengths can still trigger NCBI lookup. For offline preparation, provide lengths in
-the input or via `--fai`/`--assembly-report`, and add `--no-ncbi-lengths` to prevent
+lengths can still trigger ENA lookup. For offline preparation, provide lengths in
+the input or via `--fai`/`--assembly-report`, and add `--no-ena-lengths` to prevent
 length lookup. Do not combine manual IDs with organelle-specific metadata/cache
 options; general sequence metadata/cache options remain available for lengths.
 
 The assembly itself and manifest PRIMARY_ID are unchanged. Reports record the
 exclusions and whether their source was manual or automatic. A manual TSV entry
-has an empty `ncbi_sequence` and `location` set to `manual exclusion`. See
+has an empty `ena_sequence` and `location` set to `manual exclusion`. See
 [ORGANELLES.md](ORGANELLES.md) for classification, reference checks and tag
 reservation.
 
@@ -382,7 +362,7 @@ comma-separated string of exact sequence IDs for manual filtering (see
 {
   "translation_table": 1,
   "out_root": "../prepared_annotations",
-  "sequence_cache_dir": "../ncbi-cache"
+  "sequence_cache_dir": "../ena-cache"
 }
 ```
 
@@ -424,8 +404,8 @@ Audit requires only an input and a new report path:
 python3 ena_gffprep.py --input annotation.gff3 --audit-only --report audit.json
 ```
 
-It is offline and descriptive: no prepared GFF, manifest, locus tags or NCBI
-lookup. Filtering and NCBI metadata options cannot be used. `--input-format` can restrict the parsed syntax; audit does not run the normalizer. CDS arithmetic is
+It is offline and descriptive: no prepared GFF, manifest, locus tags or ENA
+lookup. Filtering and ENA metadata options cannot be used. `--input-format` can restrict the parsed syntax; audit does not run the normalizer. CDS arithmetic is
 grouped by parent and can conflate distinct products. The 90-nt review threshold
 is not an asserted ENA rejection rule. The report's parent directory must exist.
 
@@ -459,8 +439,8 @@ metadata; external validation and account/archive checks remain separate.
 | --- | --- |
 | Cannot determine predictor/version | Supply accurate metadata or choose explicit inference/no-inference; inspect detected format/provenance in the report. |
 | Model requires predictor/version | Provide both; model names do not establish software versions. |
-| Missing/ambiguous sequence or length conflict | Check the exact assembly, aliases and supplied length files; use complete offline NCBI metadata if needed. |
-| NCBI request/cache failure | Check HTTPS/cache permissions, explicitly refresh a corrupt cache, or supply offline metadata. |
+| Missing/ambiguous sequence or length conflict | Check the exact assembly, aliases and supplied length files; use complete offline ENA metadata if needed. |
+| ENA request/cache failure | Check HTTPS/cache permissions, explicitly refresh a corrupt cache, or supply offline metadata. |
 | Unexpected output name/description | Check label, name, description and explicit-output overrides. |
 | Existing output | Choose a new directory, label or file path. |
 | Invalid/conflicting locus tag | Check prefix syntax, stable gene IDs and the complete cumulative map. |

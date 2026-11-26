@@ -87,7 +87,7 @@ python3 -m unittest discover -s tests -v
 ```
 
 Tests use temporary files, synthetic annotations and mocked network responses.
-They need no NCBI connection, Webin credentials, Java or extra Python packages.
+They need no ENA connection, Webin credentials, Java or extra Python packages.
 `release_verification.json` records the current test result.
 
 | Area | Checks |
@@ -96,7 +96,7 @@ They need no NCBI connection, Webin credentials, Java or extra Python packages.
 | Provenance/metadata | Direct-source and explicit inference policies, conflicts, model naming, descriptions, optional taxonomy and genetic-code preservation. |
 | Structure | Parent graphs, single-parent output, multipart IDs, shared leaves, coordinate bounds and advisory CDS arithmetic. |
 | Locus tags | Stable allocation, collisions, suffix syntax, propagation and historical reservations. |
-| NCBI metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, pagination, caching/refresh, failure handling and shared filtering lookups. |
+| ENA metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, caching/refresh, failure handling and shared filtering lookups. |
 | Filtering/workflows | Automatic and manual organelle exclusions, optional CLI values, exact-ID validation, header-only exclusions, network bypass, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
 | Diagnostics | Supported validator-log associations and review tables. |
 

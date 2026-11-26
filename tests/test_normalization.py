@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 import ena_gffprep as g
 import test_formats as format_fixtures
-from test_organelles import ACC, record, MT
+from test_organelles import ACC, record, MT, tsv
 
 class StructuralTests(unittest.TestCase):
     fixture=format_fixtures.FormatTests.fixture
@@ -15,7 +15,7 @@ class StructuralTests(unittest.TestCase):
         self.root=Path(self.tmp.name);self.source=self.root/'input.gff';self.number=0
     def prep(self,text=None,**settings):
         self.number+=1;self.source.write_text('##gff-version 3\n##sequence-region s 1 1000\n'+(text if text is not None else self.fixture('UnknownPredictor')))
-        config=dict(input=str(self.source),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/str(self.number)),no_ncbi_lengths=True)
+        config=dict(input=str(self.source),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/str(self.number)),no_ena_lengths=True)
         config.update(settings);result=g.prepare_package(config);dest=Path(result['output_directory'])
         return gzip.open(next(dest.glob('*.gz')),'rt').read(),json.loads((dest/'preparation.json').read_text())
     def test_unknown_source_normalized_without_hint(self):
@@ -109,7 +109,7 @@ class StructuralTests(unittest.TestCase):
         out,r=self.prep(self.fixture('Unknown')+'s\tUnknown\texon\t1\t9\t.\t+\t2\tID=e;Parent=t\n')
         self.assertIn('original_phase=2',out);self.assertIn('\texon\t1\t9\t.\t+\t.\t',out)
     def test_phase_conflict_on_excluded_organelle_does_not_run(self):
-        metadata=self.root/'ncbi.json';metadata.write_text(json.dumps({'reports':[record('s'),record('mt','Mitochondrion')]}))
+        metadata=self.root/(ACC+'_sequence_report.txt');metadata.write_bytes(tsv([record('s'),record('mt','Mitochondrion')]))
         text=self.fixture('Unknown')+MT+'mt\ttest\texon\t1\t90\t.\t+\t1\tID=em;Parent=tm;original_phase=2\n'
         out,r=self.prep(text,remove_organelles=True,sequence_metadata=str(metadata))
         self.assertNotIn('\nmt\t',out);self.assertEqual(r['organelle_filter']['removed_feature_rows'],4)
