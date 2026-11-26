@@ -455,3 +455,15 @@ Product names and protein IDs are not invented by default. See also
 | `ena_add_inference.py` | Optional explicit inference addition to a separate GFF3 copy. |
 
 See [VALIDATION.md](VALIDATION.md#automated-tests-and-scope) for the regression suite.
+
+## Authors and citation
+
+Developed by Nathan Riley as part of the Tree of Life programme at the
+Wellcome Sanger Institute. To cite this software, use the citation metadata
+in [CITATION.cff](CITATION.cff) or GitHub's "Cite this repository" feature.
+
+## License
+
+Copyright (c) 2026 Genome Research Ltd.
+
+This software is distributed under the [MIT License](LICENSE).
