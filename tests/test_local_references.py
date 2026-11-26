@@ -21,3 +21,19 @@ class LocalReferenceTests(unittest.TestCase):
         _, report, _ = self.runprep(base.BASE)
         self.assertEqual(report['local_reference_provenance']['jar_sha256'], vocab.reference_data()['jar_sha256'])
         self.assertEqual(report['local_reference_provenance']['dbxref_source_sha256'], vocab.reference_data()['dbxref_source_sha256'])
+
+    def test_dbxref_compatibility_policy(self):
+        raw = {'Bold', 'InterPro', 'Phytozome', 'Phytozme', 'TAIR'}
+        self.assertEqual(vocab.effective_dbxref_tags(raw),
+                         {'BOLD', 'Bold', 'InterPro', 'Interpro', 'Phytozome', 'TAIR'})
+        self.assertIn('Phytozme', raw)
+        self.assertEqual(vocab.effective_dbxref_tags({'Demo'}), {'Demo'})
+
+    def test_dbxref_policy_in_preparation(self):
+        for tag in ('BOLD', 'Bold', 'InterPro', 'Interpro', 'Phytozome', 'TAIR'):
+            with self.subTest(tag=tag):
+                self.runprep(base.BASE.replace('ID=g1', 'ID=g1;Dbxref='+tag+':123'))
+        for tag in ('Phytozme', 'bold', 'interpro', 'NonexistentDatabase'):
+            with self.subTest(tag=tag):
+                with self.assertRaisesRegex(base.m.Invalid, 'unrecognized Dbxref'):
+                    self.runprep(base.BASE.replace('ID=g1', 'ID=g1;Dbxref='+tag+':123'))

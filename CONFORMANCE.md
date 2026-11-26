@@ -10,9 +10,11 @@ A single `#!transl_table` pragma accepts comma-separated compartment/code pairs,
 
 Use `--sequence-metadata` for offline classification, or enabled ENA length lookup for remote/cache resolution. Metadata already loaded for lengths or filtering is reused. Reports include input declarations, resolved compartments, metadata provenance, code counts per sequence and counts by assignment source. No sequence translation or BioSample genetic-code verification is performed.
 
-## Offline vocabulary snapshot
+## Local reference vocabularies
 
-Feature mappings are generated locally from a user-acquired gff3tools 5.5.1 JAR; Dbxref tags are supplied locally from the INSDC registry. No registry or extracted mapping is bundled. The setup tool checks the pinned JAR and OBO checksums and records the tag-list checksum. Tags are case-sensitive; identifiers are not remotely verified. The local tag list is user-maintained and its completeness is not verified. Pseudogene subtype normalization and explicit structural checks remain unchanged.
+Follow [REFERENCE_DATA.md](REFERENCE_DATA.md) before preparation.
+
+Feature mappings are generated locally from a user-acquired gff3tools 5.5.1 JAR; Dbxref tags are supplied locally from the INSDC registry. No registry or extracted mapping is bundled. The setup tool checks the pinned JAR and OBO checksums and records the tag-list checksum. Tags are case-sensitive; identifiers are not remotely verified. The local tag list is extracted from registry examples or supplied by the user; completeness is not verified. Explicit compatibility policy accepts BOLD/Bold and InterPro/Interpro if either variant is present and excludes Phytozme as an apparent typo. Other tags remain case-sensitive; no attributes are rewritten. Pseudogene subtype normalization and explicit structural checks remain unchanged.
 
 Selected conventional gene relationships are checked, including CDS parents and mRNA/gene relationships. This is not exhaustive ontology part_of validation. Existing prediction-method settings remain available; no new inference semantics are introduced by this update.
 
@@ -40,9 +42,9 @@ Use a compatible Webin build. The standalone helper supports optional reference 
 
 Sources: [SO GFF3](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md), [ENA feature mapping](https://github.com/enasequence/gff3tools/blob/main/src/main/resources/feature-mapping.tsv), [INSDC Dbxref vocabulary](https://www.insdc.org/submitting-standards/dbxref-qualifier-vocabulary/). The supplied working draft is not redistributed.
 
-### Stage 5: pinned Sequence Ontology graph
+## Sequence Ontology graph
 
-`so_snapshot.json` is generated locally from the user-acquired SO OBO release 2026-08-07. It is not distributed. See README and THIRD_PARTY_NOTICES.md for setup and provenance. No runtime download or extra Python dependency is required after setup.
+`so_snapshot.json` is generated locally from the user-acquired SO OBO release 2026-08-07. It is not distributed. See [reference setup](REFERENCE_DATA.md) and [third-party notices](THIRD_PARTY_NOTICES.md) for setup and provenance. No runtime download or extra Python dependency is required after setup.
 
 The working GFF3 specification column 3 requires a sequence feature or a term
 related to SO:0000110 through is_a or part_of, and separately references the INSDC
@@ -58,3 +60,16 @@ subtypes are not automatically admitted or rewritten. No coordinate or phase
 changes are introduced. The INSDC Minimal Specifications archive (commit
 2a8668680625025178a8a38020ee426a4cc6070c) remains the reference for subsequent
 biological and topology checks, not a substitute for the feature mapping.
+
+## Report interpretation
+
+In `preparation.json`, `local_reference_provenance` records the gff3tools
+and Dbxref source hashes, while `ontology` records the SO version/hash,
+subtypes and relationship evidence counts. `ontology_supported` indicates
+positive asserted evidence; `not_established` and `unresolved_term` are not
+proof of invalidity. The `translation_table_sources_by_CDS_row`,
+`input_translation_tables`, `translation_compartments`,
+`translation_compartment_metadata` and `translation_codes_by_sequence` entries
+record genetic-code inputs and resolution. Review them alongside
+`biological_review`, warnings and `checks_not_performed`. None is an archive
+acceptance result.

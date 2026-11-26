@@ -1,27 +1,15 @@
 # Changelog
 
-- Generate third-party reference indexes locally instead of distributing them; pin SO and gff3tools inputs and record Dbxref list checksum.
+## Unreleased — v0.9.0 development
 
-## Unreleased
-
-- Preserve explicitly declared one-base ribosomal-slippage CDS overlaps without changing phases.
-- Normalize supported pseudogenic component types before phase validation, check multipart codon attribute consistency and extend gene ownership checks.
-- Document authoritative topology requirements and remaining specialist limitations.
-
-- Expand compartment-specific translation-table pragmas using ENA sequence metadata; report assignment provenance and refuse unresolved compartments. — Controlled vocabularies
-
-- Validate feature names and resolve supported SO accessions before parsing CDS phases.
-- Validate registered Dbxref tags and pseudogene subtypes offline.
-- Normalise specific pseudogene gene types, sharing ownership classification with organelle filtering.
-- Extend conventional parent-type checks and conformance regression fixtures.
-
-## Unreleased — Initial conformance development
-
-- Check taxonomy URI providers, Dbxref syntax, amino acid names, multipart partiality and exceptional CDS stop placement.
-- Support primary-only translation pragmas and report translation-code sources.
-- Omit uninterpreted directives with report entries.
-- Extend standalone Java validation reporting and resource options.
-- Document remaining conformance gaps and add targeted regression tests.
+- Generate local reference indexes from pinned SO and gff3tools inputs and a user-supplied Dbxref list; record provenance without redistributing the datasets.
+- Resolve supported SO accessions, reject obsolete/non-feature and unmapped terms, and report ontology relationship evidence.
+- Extract registry examples locally, apply explicit Dbxref compatibility exceptions and provision reviewed references in CI.
+- Validate Dbxref tags, amino acid names, pseudogene subtypes, taxonomy URI providers, multipart partiality and selected parent relationships.
+- Normalize supported pseudogenic feature types and preserve explicitly declared one-base ribosomal-slippage overlaps and split codon structures.
+- Resolve compartment-specific translation pragmas using ENA metadata and record assignment sources; refuse unresolved compartments.
+- Record omitted unknown directives and extend standalone Java validation reporting and resource options.
+- Document conservative specialist limitations, local reference acquisition and reproducible validation. The 250-test suite passed at `ff8d3bd`; authenticated Webin validation remains outstanding.
 
 ## Unreleased — User documentation
 
@@ -118,6 +106,3 @@
 ## 0.5.0 — Streamlined workflow
 
 - Add package naming, manifests, reports, predictor detection, configuration and batch preparation.
-
-- Development: integrate pinned SO graph, obsolete/non-feature diagnostics and
-  relationship evidence reporting without relaxing INSDC mapping constraints.

@@ -23,6 +23,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Acquire and verify local references
+        run: |
+          set -euo pipefail
+          refs=$(mktemp -d)
+          trap 'rm -rf "$refs"' EXIT
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/The-Sequence-Ontology/SO-Ontologies/4340c143bac3578bba0c013d02e8c5f0e51ad14a/Ontology_Files/so.obo -o "$refs/so.obo"
+          curl -fsSL --retry 3 https://github.com/enasequence/webin-cli/releases/download/11.0.0/webin-cli-11.0.0.jar -o "$refs/webin-cli-11.0.0.jar"
+          curl -fsSL --retry 3 https://www.insdc.org/submitting-standards/dbxref-qualifier-vocabulary/ -o "$refs/dbxref.html"
+          echo "5707672eb39c2333eb950e28c07c4905495573c3ad8c26a2e31fa1eccd34e1fc  $refs/dbxref.html" | sha256sum -c -
+          python tools/extract_dbxref_tags.py "$refs/dbxref.html" "$refs/tags.txt" --accept-example-tags
+          echo "e57100ead84f0f2b1d8c070f4582ce2725365d17b3feafad8d089d85fd18d4d2  $refs/tags.txt" | sha256sum -c -
+          python tools/setup_references.py --obo "$refs/so.obo" --jar "$refs/webin-cli-11.0.0.jar" --dbxref-tags "$refs/tags.txt"
+
       - name: Run automated tests
         run: python -m unittest discover -s tests -v
 

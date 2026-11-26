@@ -10,6 +10,8 @@ for new behavior or bug fixes. Preserve retained prediction coordinates, strands
 CDS phases and product relationships unless a separately documented change is
 explicitly intended. Do not invent biological evidence to satisfy a validator.
 
+Complete [local reference setup](REFERENCE_DATA.md) before running tests.
+
 Run from the repository root:
 
 ```bash

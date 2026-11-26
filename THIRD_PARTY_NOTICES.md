@@ -18,7 +18,7 @@ terms. This notice does not grant rights to redistribute those materials.
   Referenced as standards; supplied documents are not redistributed.
 
 Institutional review is recommended before public release. This is not a legal
- determination of the upstream licences.
+determination of the upstream licences.
 
 ### Pinned Sequence Ontology source
 
@@ -29,3 +29,5 @@ Institutional review is recommended before public release. This is not a legal
 
 The ontology is obtained separately by the user and is not distributed
 as part of this repository.
+
+For acquisition instructions and checksum checks, see [REFERENCE_DATA.md](REFERENCE_DATA.md).

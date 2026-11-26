@@ -4,8 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/n8mriley/ena-gffprep)](https://github.com/n8mriley/ena-gffprep/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](#requirements)
 
-Prepare existing genome annotations for ENA decoupled GFF3 submission. Version
-**0.8.0** supports several annotation formats, creates a manifest and locus-tag
+Prepare existing genome annotations for ENA decoupled GFF3 submission. The **v0.9.0 development branch** (unreleased; CLI version remains 0.8.0) supports several annotation formats, creates a manifest and locus-tag
 map, and records the preparation settings. It does not run annotation software,
 authenticate with ENA or submit data.
 
@@ -32,18 +31,22 @@ that evidence semantics or biological models are correct.
 
 ### Install
 
-Clone the initial public release and keep the Python modules together. No
-package installation, GPU or Java is needed for preparation.
+For the development functionality described here, clone the development branch:
 
 ```bash
-git clone https://github.com/n8mriley/ena-gffprep.git
+git clone --branch update-0.9.0-conformance https://github.com/n8mriley/ena-gffprep.git
 cd ena-gffprep
 python3 ena_gffprep.py --version
 ```
 
+Complete [local reference setup](REFERENCE_DATA.md) before preparation or the
+full test suite. No package installation or GPU is needed. Java is not needed
+for reference setup or Python preparation. For the released software, use the
+`v0.8.0` tag and its own documentation.
+
 ### Try a local example
 
-Run the included synthetic fixture without network access or credentials:
+After local reference setup, run the included synthetic fixture without network access or credentials:
 
 ```bash
 python3 ena_gffprep.py \
@@ -121,6 +124,9 @@ separate user-controlled steps.
 
 | Guide | Purpose |
 | --- | --- |
+| [Reference setup](REFERENCE_DATA.md) | Download, verify and generate required local indexes |
+| [Submission conformance](CONFORMANCE.md) | Supported checks, reports and limitations |
+| [Third-party notices](THIRD_PARTY_NOTICES.md) | Licensing boundaries and upstream provenance |
 | [Examples](examples/README.md) | Synthetic fixture and batch templates |
 | [Input syntax and normalization](#input-syntax-and-structural-normalization) | Feature graph and CDS grouping policies |
 | [Prediction provenance](#prediction-provenance) | Inference and evidence handling |
@@ -140,6 +146,7 @@ not establish compliance with ENA's decoupled annotation submission rules.
 
 - Python **3.9+**, using only the standard library; no pip installation or GPU.
   Keep the distributed Python scripts together.
+- Locally generated SO and feature/Dbxref indexes; see [reference setup](REFERENCE_DATA.md).
 - Supported GFF3 or quoted GTF with explicit gene/transcript containers. Arbitrary
   GFF2, embedded sequences and some specialist locations are not supported.
   Text must meet the scripts' ASCII checks.
@@ -159,7 +166,7 @@ and header metadata.
 | Option | Values / behavior |
 | --- | --- |
 | `--input-format FORMAT` | `auto` (default), `gff3` or `gtf`. Chooses attribute syntax, not annotator. Auto examines the actual rows; mixed GTF/GFF3 attribute syntax is rejected. |
-| `--normalization MODE` | `standard` (default) or `strict`. Standard applies shared transformations. Strict skips type/phase/CDS-group rewrites, but still expands shared leaves for single-parent output and runs structural checks. |
+| `--normalization MODE` | `standard` (default) or `strict`. Standard applies shared transformations. Strict skips standard-normalizer type/phase/CDS-group rewrites (parser-level SO and pseudogenic type normalization still applies), but still expands shared leaves for single-parent output and runs structural checks. |
 | `--cds-grouping POLICY` | `auto` (default), `single-product` or `preserve`. Explicit overrides require standard normalization; see below. |
 | `--source-format HINT` | Compatibility option for earlier commands. Named annotators no longer select adapters. Explicit `gtf`/`gff3` supply a syntax default; explicit `generic` supplies a strict-normalization default. Explicit new options take precedence. |
 
@@ -478,6 +485,8 @@ metadata; external validation and account/archive checks remain separate.
 
 | Symptom | Action |
 | --- | --- |
+| Missing reference index or checksum mismatch | Follow [reference setup](REFERENCE_DATA.md); use the exact pinned inputs. |
+| Unknown feature or Dbxref tag | Check the local mapping and upstream registry; valid unmapped SO terms require specialist review. |
 | Cannot determine predictor/version | Supply accurate metadata or choose explicit inference/no-inference; inspect detected format/provenance in the report. |
 | Model requires predictor/version | Provide both; model names do not establish software versions. |
 | Missing/ambiguous sequence or length conflict | Check the exact assembly, aliases and supplied length files; use complete offline ENA metadata if needed. |
@@ -504,6 +513,9 @@ Product names and protein IDs are not invented by default. See also
 | `ena_formats.py` | Detect input syntax and predictor provenance; construct GTF relationships. |
 | `ena_normalize.py` | Source-independent structural transformations. |
 | `ena_organelles.py` | ENA sequence reports, caching, alias matching and sequence exclusion. |
+| `ena_conformance.py`, `ena_ontology.py`, `ena_vocabularies.py` | Local vocabulary, ontology evidence and submission-profile checks. |
+| `ena_translation.py` | Genetic-code pragma parsing and ENA compartment resolution. |
+| `tools/setup_references.py` | Generate checksum-checked local reference indexes. |
 | `ena_common.py` | Shared I/O, validation and staged publication helpers. |
 | `run_bundled_validator.py` | Run local rules from a separately supplied Webin JAR. |
 | `ena_validation_review.py` | Associate validator diagnostics with features. |
@@ -521,39 +533,15 @@ in [CITATION.cff](CITATION.cff) or GitHub's "Cite this repository" feature.
 
 Copyright (c) 2026 Genome Research Ltd.
 
-This software is distributed under the [MIT License](LICENSE).
+Original software is distributed under the [MIT License](LICENSE). Separately
+acquired external materials retain their upstream terms; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Submission conformance
 
-See [CONFORMANCE.md](CONFORMANCE.md) for the targeted INSDC Submission profile, local checks, unsupported representations and external validation requirements.
-
-The development conformance checks use locally generated feature and Dbxref vocabulary indexes; see [CONFORMANCE.md](CONFORMANCE.md) for provenance and limitations. Valid specialist terms outside the snapshot require review.
-
-### Compartment-specific genetic codes (development)
-
-For mixed nuclear and organellar annotations, use explicit CDS `transl_table` attributes or a file-level pragma such as `#!transl_table primary:1,mitochondrion:2` with verified ENA sequence metadata (`--sequence-metadata`). The example codes are not universal. See [CONFORMANCE.md](CONFORMANCE.md) for supported compartment keys and unresolved-classification safeguards.
-
-Specialist feature support is conservative: explicitly declared one-base ribosomal-slippage CDS overlaps and supported pseudogenic component types are handled; circular virtual coordinates require authoritative sequence topology and remain unsupported. See [CONFORMANCE.md](CONFORMANCE.md).
-
-The development conformance checks use a pinned local Sequence Ontology graph
-alongside the INSDC-oriented feature mapping. See [CONFORMANCE.md](CONFORMANCE.md)
-for provenance, legacy aliases and relationship assessment limitations.
-
-### Local reference setup (development branch)
-
-Before preparing annotations or running the full regression suite, obtain the
-SO OBO release 2026-08-07, the compatible Webin CLI JAR containing gff3tools
-5.5.1, and a plain-text list of current INSDC Dbxref database tags (one per line,
-case-sensitive, no identifiers). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-```bash
-python3 tools/setup_references.py --obo /path/to/so.obo \
-  --jar /path/to/webin-cli.jar --dbxref-tags /path/to/dbxref-tags.txt
-```
-
-The exact OBO bytes and embedded JAR are checksum-pinned. The tag list is
-user-maintained; use the same list for reproducible results. The regression
-suite expects the Stage 5 reference version and tags including GeneID, GO and
-ATCC(in host). Generated indexes are ignored by Git and must not be published.
-The setup command performs no network access. Original software remains MIT;
-external reference materials retain their upstream terms.
+The development branch adds local feature/Dbxref checks, SO graph evidence,
+selected parent/child and partial-boundary checks, compartment-specific genetic
+codes and conservative handling of explicitly declared slippage and pseudogenic
+features. It targets a working draft of the INSDC GFF3 Submission profile, not
+complete official validation. See [CONFORMANCE.md](CONFORMANCE.md) for supported
+representations, report fields and remaining limitations.

@@ -11,7 +11,7 @@ placeholders. `pilot.gff3` is synthetic. Do not submit these examples.
 
 ## Run the synthetic fixture
 
-From the toolkit directory, choose a new output directory:
+After [local reference setup](../REFERENCE_DATA.md), from the toolkit directory, choose a new output directory:
 
 ```bash
 python3 ena_gffprep.py \
