@@ -40,11 +40,13 @@ FIELDS = ('accession','sequence-name','sequence-length','sequence-role','replico
 
 
 def report_url(accession):
+    """Build the ENA sequence-report URL for an exact versioned GCA accession."""
     check(bool(re.fullmatch(r'GCA_[0-9]{9}\.[0-9]+', accession or '')), 'ENA metadata requires a versioned GCA accession')
     return f'{API_BASE}{accession[:7]}/{accession[:10]}/{accession}_sequence_report.txt'
 
 
 def validate_records(records, accession, require_classification=True):
+    """Validate report rows and derive aliases, lengths and compartment classifications."""
     check(bool(records), 'ENA sequence report is empty')
     result, seen = [], set()
     for row in records:
@@ -74,6 +76,7 @@ def validate_records(records, accession, require_classification=True):
 
 
 def parse_report(raw, accession, require_classification=True):
+    """Parse the ENA TSV, rejecting malformed headers and incomplete rows."""
     check(raw.endswith(b'\n'), 'ENA report lacks final newline; possible incomplete transfer')
     reader = csv.DictReader(raw.decode('utf-8-sig').splitlines(), delimiter='\t')
     check(reader.fieldnames and len(reader.fieldnames)==len(set(reader.fieldnames)) and set(FIELDS)<=set(reader.fieldnames), 'Expected ENA sequence report TSV header')
@@ -83,6 +86,7 @@ def parse_report(raw, accession, require_classification=True):
 
 
 def request_report(url):
+    """Fetch report bytes, retry transient failures and check transfer length."""
     request = Request(url, headers={'Accept':'text/plain','User-Agent':'ena-gffprep/0.8.0'})
     for attempt in range(3):
         try:
@@ -101,6 +105,7 @@ def request_report(url):
 
 
 def load_metadata(args, require_classification=True):
+    """Resolve offline/cache/remote metadata, validate it and publish fresh cache atomically."""
     accession = args.assembly_accession
     url = report_url(accession)
     offline = getattr(args,'sequence_metadata',None) or getattr(args,'organelle_metadata',None) or getattr(args,'assembly_report',None)

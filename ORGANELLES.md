@@ -11,12 +11,13 @@ Add the flag to an ordinary preparation command:
 python3 ena_gffprep.py \
   --input annotation.gff3 \
   --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
   --locus-tag-prefix YOURPREFIX \
   --remove-organelles
 ```
 
 The normal format and provenance requirements still apply. Replace the example
-accession/prefix and add predictor or inference options when required. The flag
+accessions/prefix and add predictor or inference options when required. The flag
 does not add a filtering suffix to the output name: choose a new output directory
 or label if an earlier package exists.
 
@@ -28,6 +29,7 @@ Supply one or more exact input sequence IDs immediately after the flag:
 python3 ena_gffprep.py \
   --input annotation.gff3 \
   --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
   --locus-tag-prefix YOURPREFIX \
   --no-inference \
   --remove-organelles OV123456.1,OV123457.1 \

@@ -1,3 +1,11 @@
+# Changelog
+
+## Unreleased — Submission metadata and documentation
+
+- Require BioProject for preparation via CLI, configuration, batch or direct API; always write STUDY in generated manifests. Audit remains exempt.
+- Record BioProject in preparation metadata; validate syntax locally, not study ownership.
+- Clarify primary ab initio/deep-learning scope and experimental evidence-based compatibility; streamline guides and document module responsibilities.
+
 ## Unreleased — ENA-only metadata
 
 - Replace NCBI assembly metadata retrieval and parsing with ENA sequence-report TSV.
@@ -5,17 +13,15 @@
 - Rename `--no-ncbi-lengths` to `--no-ena-lengths` and report keys to ENA equivalents.
 - Preserve local length inputs and manual organelle exclusions.
 
-# Changelog
-
 ## Unreleased — Manual organelle exclusions
 
 - Accept an optional comma-separated sequence list after `--remove-organelles`;
-  retain automatic NCBI identification when the flag has no value.
+  retain automatic identification when the flag has no value (now ENA).
 - Match exact input IDs, remove features and sequence declarations before
   normalization/tag allocation, and retain relationship and tag safeguards.
 - Record manual provenance and reject unknown, duplicate or empty IDs.
 - Support manual lists in JSON configuration and batch TSV; clarify that missing
-  sequence lengths can still require NCBI unless lookup is disabled.
+  sequence lengths can still require remote metadata unless lookup is disabled.
 - Add eight regression tests (210 total).
 
 ## 0.8.0

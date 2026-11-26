@@ -76,6 +76,7 @@ def gtf_identity(a, feature, line):
     the source checksum so that input-dependent identifiers can be reproduced.
     """
     def one(key):
+        """Require one nonempty GTF identifier for this relationship."""
         vals = a.get(key, [])
         if len(vals) != 1 or not vals[0]: raise ValueError(f'Line {line}: GTF requires one {key}')
         return vals[0]

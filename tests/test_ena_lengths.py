@@ -16,7 +16,7 @@ class LengthFallbackTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.input=self.root/'input.gff'
-        self.settings=dict(input=str(self.input),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/'out'),sequence_cache_dir=str(self.root/'cache'))
+        self.settings=dict(input=str(self.input),assembly_accession=ACC,bioproject='PRJEB123456',locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/'out'),sequence_cache_dir=str(self.root/'cache'))
         self.missing='\n'.join(l for l in BASE.splitlines() if not l.startswith('##sequence-region'))+'\n'
     def prep(self,text=None,**extra):
         self.input.write_text(self.missing if text is None else text)
@@ -127,5 +127,5 @@ class LengthFallbackTests(unittest.TestCase):
         self.input.write_text(self.missing);self.offline([record('seq1')])
         batch=self.root/'jobs.tsv';batch.write_text('input\tassembly_accession\tlocus_tag_prefix\tno_inference\tsequence_metadata\ninput.gff\t'+ACC+'\tTEST\ttrue\t'+ACC+'_sequence_report.txt\n')
         with contextlib.redirect_stdout(io.StringIO()):
-            code=g.batch_prepare(batch,{'out_root':str(self.root/'batch')},self.root/'summary.json')
+            code=g.batch_prepare(batch,{'bioproject':'PRJEB123456','out_root':str(self.root/'batch')},self.root/'summary.json')
         self.assertEqual(code,0)

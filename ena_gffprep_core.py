@@ -417,6 +417,12 @@ def lengths(args, regions, seqids=None):
     return aliases, sizes, {'fai_ids': fai_seen, 'assembly_report_accessions': report_accessions, 'ena_sequence_report': ena}
 
 
+def validate_bioproject(value):
+    """Require a syntactically valid study accession, without checking ownership."""
+    require(isinstance(value, str) and re.fullmatch(r'PRJ(?:EB|NA|DB)[0-9]+', value) is not None,
+            '--bioproject is required for preparation and must be a BioProject accession (e.g. PRJEB123456)')
+
+
 def prepare(args):
     """Prepare GFF3, locus tags, manifest and reports from an argument namespace.
     
@@ -454,6 +460,7 @@ def prepare(args):
     require(not set(resolved) & {Path(p).resolve() for p in inputs if p}, 'Outputs must not overwrite inputs; use a new mapping version')
     require(not any(p.exists() for p in resolved), 'An output already exists; choose new paths')
     require(all(p.parent.is_dir() for p in resolved), 'Every output parent directory must exist')
+    validate_bioproject(getattr(args, 'bioproject', None))
     if args.manifest:
         require(bool(args.assembly_accession), '--assembly-accession required with --manifest')
         for value in [args.name, args.description, args.assembly_accession, str(Path(args.output).resolve())]:
@@ -709,7 +716,7 @@ def prepare(args):
               'genes': len(active),
               'feature_rows': sum(len(v) for v in nodes.values()), 'shared_features_split': normalization_rules.get('shared_features_split',0),
               'reserved_retired_gene_ids': sorted(set(mapping) - active_set), 'warnings': warnings, 'notes': notes,
-              'submission_metadata': {'taxon_id': effective_taxon, 'requested_taxon_id': requested_taxon,
+              'submission_metadata': {'bioproject': args.bioproject, 'taxon_id': effective_taxon, 'requested_taxon_id': requested_taxon,
                   'taxonomy_source': taxonomy_source, 'species_directive': species_directive, 'assembly_accession': args.assembly_accession,
                   'locus_tag_policy': {'generated_suffix': 'zero-padded positive integer', 'minimum_width': args.width,
                   'existing_suffix': 'ASCII alphanumeric, preserved verbatim', 'numbering_scope': 'whole annotation across sequences and gene types',
@@ -765,7 +772,7 @@ def prepare(args):
         if args.manifest:
             require(bool(args.assembly_accession), '--assembly-accession required with --manifest')
             with opened(staged[args.manifest], 'wt') as f:
-                for k,v in [('NAME',args.name), *(([('STUDY',args.bioproject)] if getattr(args, 'bioproject', None) else [])), ('GFF3',os.path.relpath(Path(args.output).resolve(), Path(args.manifest).resolve().parent)), ('ANALYSIS_TYPE','DECOUPLED_ANNOTATION'), ('PRIMARY_ID',args.assembly_accession), ('DESCRIPTION',args.description)]:
+                for k,v in [('NAME',args.name), ('STUDY',args.bioproject), ('GFF3',os.path.relpath(Path(args.output).resolve(), Path(args.manifest).resolve().parent)), ('ANALYSIS_TYPE','DECOUPLED_ANNOTATION'), ('PRIMARY_ID',args.assembly_accession), ('DESCRIPTION',args.description)]:
                     require(not any(x in v for x in '\r\n\t'), f'Manifest {k} must be a single field')
                     f.write(k + '\t' + v + '\n')
     return report

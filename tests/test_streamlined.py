@@ -24,7 +24,7 @@ class WorkflowTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
         (self.root/'source.gff').write_text(ANNEVO)
-        self.settings={'input':str(self.root/'source.gff'),'assembly_accession':'GCA_123456789.1',
+        self.settings={'input':str(self.root/'source.gff'),'assembly_accession':'GCA_123456789.1','bioproject':'PRJEB123456',
             'taxon_id':9606,'locus_tag_prefix':'TEST','output_dir':str(self.root/'prepared')}
     def test_auto_package_and_manifest(self):
         # This fixture uses directives, not ANNEVO length comments: supply an external index.
@@ -75,7 +75,7 @@ class AdditionalSafeguards(unittest.TestCase):
             p=Path(d);source=p/'source.gff'
             text=ANNEVO.replace('##sequence-region seq1 1 100\n','# ----- prediction on sequence number 1 (length = 100, name = seq1) -----\n')
             source.write_text(text)
-            r=g.prepare_package({'input':str(source),'assembly_accession':'GCA_123456789.1',
+            r=g.prepare_package({'input':str(source),'assembly_accession':'GCA_123456789.1','bioproject':'PRJEB123456',
                 'taxon_id':9606,'locus_tag_prefix':'TEST','output_dir':str(p/'out')})
             self.assertEqual(r['genes'],1)
             report=json.loads((p/'out/preparation.json').read_text())

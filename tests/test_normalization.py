@@ -15,7 +15,7 @@ class StructuralTests(unittest.TestCase):
         self.root=Path(self.tmp.name);self.source=self.root/'input.gff';self.number=0
     def prep(self,text=None,**settings):
         self.number+=1;self.source.write_text('##gff-version 3\n##sequence-region s 1 1000\n'+(text if text is not None else self.fixture('UnknownPredictor')))
-        config=dict(input=str(self.source),assembly_accession=ACC,locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/str(self.number)),no_ena_lengths=True)
+        config=dict(input=str(self.source),assembly_accession=ACC,bioproject='PRJEB123456',locus_tag_prefix='TEST',no_inference=True,output_dir=str(self.root/str(self.number)),no_ena_lengths=True)
         config.update(settings);result=g.prepare_package(config);dest=Path(result['output_directory'])
         return gzip.open(next(dest.glob('*.gz')),'rt').read(),json.loads((dest/'preparation.json').read_text())
     def test_unknown_source_normalized_without_hint(self):
@@ -115,7 +115,7 @@ class StructuralTests(unittest.TestCase):
         self.assertNotIn('\nmt\t',out);self.assertEqual(r['organelle_filter']['removed_feature_rows'],4)
     def test_provenance_independent_of_normalization_mode(self):
         self.source.write_text('##gff-version 3\n'+self.fixture('Tiberius'))
-        settings=dict(input=str(self.source),assembly_accession=ACC,locus_tag_prefix='TEST')
+        settings=dict(input=str(self.source),assembly_accession=ACC,bioproject='PRJEB123456',locus_tag_prefix='TEST')
         a=g.resolve_settings({**settings,'normalization':'standard'});b=g.resolve_settings({**settings,'normalization':'strict'})
         self.assertEqual(a['inference_by_source'],b['inference_by_source'])
     def test_invalid_policy_rejected(self):

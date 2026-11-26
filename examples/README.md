@@ -17,6 +17,7 @@ From the toolkit directory, choose a new output directory:
 python3 ena_gffprep.py \
   --input examples/pilot.gff3 \
   --assembly-accession GCA_123456789.1 \
+  --bioproject PRJEB123456 \
   --locus-tag-prefix EXAMPLE \
   --no-inference --no-ena-lengths \
   --output-dir example-preparation
@@ -24,11 +25,11 @@ python3 ena_gffprep.py \
 
 The explicit no-inference policy avoids assigning invented provenance to this
 fixture. Its sequence-region declaration supplies bounds, so no lookup is needed.
-The accession/prefix are illustrative, not verified registration or archive links.
+The accessions/prefix are illustrative, not verified registration or archive links.
 
 ## Adapt the batch template
 
-The table includes direct-source and pipeline examples. Replace each `ACTUAL_VERSION`
+The table includes direct-source and experimental evidence-based pipeline examples. BRAKER compatibility is not fully tested; see the [scope statement](../README.md#scope-and-maturity). Replace each `ACTUAL_VERSION`
 with the version used. Empty cells inherit config/CLI defaults; they do not clear
 a default. Keep predictor/model defaults out of shared settings when jobs differ.
 Each job needs its own registered prefix or a deliberately coordinated allocation.
