@@ -81,9 +81,9 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(m.Invalid,'Embedded FASTA'):
             self.runprep(BASE+'##FASTA\n>seq1\nACGT\n')
     def test_report_remap(self):
-        p=self.d/'assembly_report.txt'
-        p.write_text('seq1\tassembled-molecule\t1\tChromosome\tAB123456.1\t=\tNC_000001.1\tPrimary Assembly\t1000\tchr1\n')
-        _,_,o=self.runprep(assembly_report=str(p))
+        p=self.d/'GCA_123456789.1_sequence_report.txt'
+        p.write_text('accession\tsequence-name\tsequence-length\tsequence-role\treplicon-name\treplicon-type\tassembly-unit\nAB123456.1\tseq1\t1000\tassembled-molecule\t1\tChromosome\tPrimary Assembly\n')
+        _,_,o=self.runprep(assembly_report=str(p),assembly_accession="GCA_123456789.1")
         self.assertIn('##sequence-region AB123456.1 1 1000',o)
         self.assertNotIn('\nseq1\t',o)
     def test_idempotent(self):
@@ -105,9 +105,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(out.count('ID=t1.CDS;Parent=t1'),2)
         self.assertIn('original_id=t1.CDS.1',out)
         self.assertIn('original_id=t1.CDS.2',out)
-    def test_annevo_rejects_ambiguous_names(self):
-        with self.assertRaisesRegex(m.Invalid,'Unexpected ANNEVO'):
-            self.runprep(source_format='annevo')
+    def test_existing_logical_id_is_source_independent(self):
+        _,_,out=self.runprep(source_format='annevo')
+        self.assertEqual(out.count('ID=c1;Parent=t1'),2)
     def test_annevo_comment_lengths(self):
         text=BASE.replace('##sequence-region seq1 1 1000','# ----- prediction on sequence number 1 (length = 1000, name = seq1) -----')
         text=text.replace('ID=c1;','ID=t1.CDS.1;',1).replace('ID=c1;','ID=t1.CDS.2;',1)
@@ -122,7 +122,7 @@ class Tests(unittest.TestCase):
     def test_annevo_changed_product_rejected(self):
         text=BASE.replace('ID=c1;','ID=t1.CDS.1;',1).replace('ID=c1;','ID=t1.CDS.2;',1)
         text=text.replace('product=test%2C protein','product=other',1)
-        with self.assertRaisesRegex(m.Invalid,'Conflicting CDS attributes'):
+        with self.assertRaisesRegex(m.Invalid,'Conflicting product.*CDS attributes'):
             self.runprep(text,source_format='annevo')
     def test_audit_phase_checks(self):
         p=self.d/'audit.gff'
@@ -245,6 +245,14 @@ class Tests(unittest.TestCase):
         self.assertEqual(fields['ANALYSIS_TYPE'],'DECOUPLED_ANNOTATION')
         self.assertEqual(fields['PRIMARY_ID'],'GCA_948150665.1')
         self.assertEqual((dest.parent/fields['GFF3']).resolve(),Path(a.output).resolve())
+    def test_manifest_bioproject_study(self):
+        dest=self.d/'study_manifest.txt'
+        a,_,_=self.runprep(manifest=str(dest),assembly_accession='GCA_948150665.1',bioproject='PRJEB123456')
+        fields=dict(line.split('\t',1) for line in dest.read_text().splitlines())
+        self.assertEqual(fields['STUDY'],'PRJEB123456')
+        self.assertEqual(fields['PRIMARY_ID'],'GCA_948150665.1')
+        self.assertEqual((dest.parent/fields['GFF3']).resolve(),Path(a.output).resolve())
+
     def test_commit_failure_rolls_back(self):
         from unittest.mock import patch
         real_link=m.os.link

@@ -20,10 +20,10 @@ from ena_common import (VERSION, check, input_stem, new_package, open_text, safe
 
 PATH_KEYS = {'input', 'fai', 'assembly_report', 'locus_tag_map', 'output_dir', 'out_root',
              'output', 'report', 'manifest', 'write_locus_tag_map', 'organelle_metadata', 'organelle_cache_dir', 'inference_map', 'sequence_metadata', 'sequence_cache_dir'}
-SETTING_KEYS = PATH_KEYS | {'source_format', 'assembly_accession', 'taxon_id', 'locus_tag_prefix',
+SETTING_KEYS = PATH_KEYS | {'source_format', 'input_format', 'normalization', 'cds_grouping', 'assembly_accession', 'bioproject', 'taxon_id', 'locus_tag_prefix',
     'translation_table', 'predictor', 'predictor_version', 'predictor_model', 'inference', 'label', 'name',
-    'description', 'prediction_method', 'accession_column', 'width', 'start', 'step', 'default_product',
-    'no_inference', 'strict_warnings', 'use_annevo_lengths', 'remove_organelles', 'refresh_organelle_cache', 'no_ncbi_lengths', 'refresh_sequence_cache'}
+    'description', 'prediction_method', 'width', 'start', 'step', 'default_product',
+    'no_inference', 'strict_warnings', 'use_annevo_lengths', 'remove_organelles', 'refresh_organelle_cache', 'no_ena_lengths', 'refresh_sequence_cache'}
 
 
 def detect_source(path):
@@ -89,6 +89,15 @@ def resolve_settings(settings):
     if source_format == 'auto':
         source_format = 'annevo' if (s.get('predictor') or detected or '').casefold() == 'annevo' else detection['format']
     s['source_format'] = source_format
+    # Legacy source-format hints remain accepted, but never select a normalizer.
+    # Explicit generic preserves its historical strict type/phase/CDS-group contract.
+    s.setdefault('normalization', 'strict' if settings.get('source_format') == 'generic' else 'standard')
+    s.setdefault('input_format', source_format if settings.get('source_format') in {'gtf','gff3'} else 'auto')
+    s.setdefault('cds_grouping','auto')
+    check(s['normalization'] in {'standard','strict'}, 'Use --normalization standard or strict')
+    check(s['input_format'] in {'auto','gff3','gtf'}, 'Use --input-format auto, gff3 or gtf')
+    check(s['cds_grouping'] in {'auto','single-product','preserve'}, 'Use --cds-grouping auto, single-product or preserve')
+    check(s['normalization'] != 'strict' or s['cds_grouping'] == 'auto', 'CDS grouping overrides require standard normalization')
     s['input_detection'] = detection
     if detected and detected != 'ANNEVO':
         s.setdefault('predictor', detected)
@@ -117,7 +126,7 @@ def resolve_settings(settings):
     elif s.get('no_inference'):
         check(not s.get('inference'), '--no-inference cannot be combined with --inference')
         s['inference'] = None
-    elif not s.get('inference') and source_format not in {'annevo','generic'} and settings.get('prediction_method','auto') == 'auto' and any(automatic_mapping.values()):
+    elif not s.get('inference') and source_format != 'annevo' and settings.get('prediction_method','auto') == 'auto' and any(automatic_mapping.values()):
         s['inference_by_source'] = automatic_mapping
         s['automatic_source_inference'] = True
         s['inference'] = None
@@ -132,25 +141,35 @@ def resolve_settings(settings):
     # Taxonomy is optional; the accession and registered tag namespace are required.
     for key in ['assembly_accession', 'locus_tag_prefix']:
         check(s.get(key), '--'+key.replace('_','-')+' is required (CLI, config or batch row)')
-    check(re.fullmatch(r'GC[AF]_\d+\.\d+', s['assembly_accession']) is not None, 'Use a GCA/GCF assembly accession with version')
+    check(re.fullmatch(r'GCA_\d{9}\.\d+', s['assembly_accession']) is not None, 'Use a GCA assembly accession with version')
+    if s.get('bioproject'):
+        check(isinstance(s['bioproject'], str) and re.fullmatch(r'PRJ(?:EB|NA|DB)\d+', s['bioproject']) is not None,
+              '--bioproject must be a BioProject accession (e.g. PRJEB123456)')
     for key, default in [('translation_table',1), ('width',6), ('start',1), ('step',1)]:
         s[key] = int(s.get(key, default))
     s['taxon_id'] = int(s['taxon_id']) if s.get('taxon_id') is not None else None
-    s.setdefault('accession_column','genbank')
-    check(s['accession_column'] in {'genbank','refseq'}, '--accession-column must be genbank or refseq')
+    check(s.get('accession_column','genbank') == 'genbank', 'Only INSDC accessions are supported by ENA')
     s.setdefault('strict_warnings',False)
-    for key in ['remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+    from ena_organelles import manual_sequence_ids
+    manual_sequence_ids(s.get('remove_organelles', False))
+    if isinstance(s.get('remove_organelles'), str):
+        check(not any(s.get(k) for k in ['organelle_metadata','organelle_cache_dir','refresh_organelle_cache']),
+              'Manual organelle IDs cannot be combined with organelle metadata/cache options; use sequence options for length lookup')
+    for key in ['refresh_organelle_cache','no_ena_lengths','refresh_sequence_cache']:
         check(key not in s or isinstance(s[key],bool), key+' must be a JSON boolean or TSV true/false')
     check(s.get('remove_organelles') or not any(s.get(k) for k in ['organelle_metadata','organelle_cache_dir','refresh_organelle_cache']),
           'Organelle metadata/cache options require --remove-organelles')
     check(not (s.get('organelle_metadata') and s.get('refresh_organelle_cache')),
           '--organelle-metadata cannot be combined with --refresh-organelle-cache')
+    if s.get('assembly_report'):
+        check(not s.get('sequence_metadata') or Path(s['assembly_report']).resolve() == Path(s['sequence_metadata']).resolve(), 'Use one shared ENA report path')
+        s['sequence_metadata'] = s['assembly_report']
     for general, legacy in [('sequence_metadata','organelle_metadata'), ('sequence_cache_dir','organelle_cache_dir')]:
         check(not (s.get(general) and s.get(legacy)) or Path(s[general]).resolve() == Path(s[legacy]).resolve(),
-              'Use one shared NCBI '+general.replace('_',' ')+' path for lengths and organelle filtering')
+              'Use one shared ENA '+general.replace('_',' ')+' path for lengths and organelle filtering')
     check(not (s.get('sequence_metadata') or s.get('organelle_metadata')) or not (s.get('refresh_sequence_cache') or s.get('refresh_organelle_cache')),
           'Offline sequence metadata cannot be combined with cache refresh')
-    s['ncbi_lengths'] = not s.get('no_ncbi_lengths',False)
+    s['ena_lengths'] = not s.get('no_ena_lengths',False)
     s['explicit_annevo_lengths'] = bool(s.get('use_annevo_lengths'))
     s.setdefault('default_product',None)
     s.setdefault('use_annevo_lengths',False)
@@ -208,7 +227,7 @@ def prepare_package(settings):
             'translation_table_source':'explicit' if settings.get('translation_table') is not None else 'default_nuclear_assumption',
             'automatic_annevo_comment_lengths':s['automatic_annevo_lengths'],
             'output_directory':s['output_dir'],
-            'policy':('Remove NCBI-classified organelle predictions; preserve retained coordinates; biological QC is advisory.'
+            'policy':('Remove automatically identified or explicitly specified organelle predictions; preserve retained coordinates; biological QC is advisory.'
                       if s.get('remove_organelles') else 'Preserve predictions; add representation and submission metadata; biological QC is advisory.')}
         write_json(directory/'preparation.json',report)
         warnings = report['warnings']
@@ -246,7 +265,9 @@ def batch_prepare(path, defaults, summary_path):
         settings.update(relative_paths({k:v for k,v in row.items() if v},Path(path).resolve().parent))
         # TSV values are strings; boolean fields have an explicit small vocabulary.
         try:
-            for key in ['no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+            for key in ['no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','no_ena_lengths','refresh_sequence_cache']:
+                if key == 'remove_organelles' and isinstance(settings.get(key), str) and settings[key].lower() not in {'true','false'}:
+                    continue  # comma-separated exact sequence IDs
                 if isinstance(settings.get(key),str):
                     check(settings[key].lower() in {'true','false'},f'{key} must be true or false')
                     settings[key]=settings[key].lower()=='true'
@@ -268,24 +289,30 @@ def parser():
     """Build the CLI parser for package, batch, audit and legacy output modes."""
     p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument('--version',action='version',version=VERSION)
-    for key in sorted(SETTING_KEYS-{'no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','taxon_id','translation_table','width','start','step','no_ncbi_lengths','refresh_sequence_cache'}):
+    for key in sorted(SETTING_KEYS-{'no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','taxon_id','translation_table','width','start','step','no_ena_lengths','refresh_sequence_cache'}):
         p.add_argument('--'+key.replace('_','-'),
-            help={'sequence_metadata':'Complete offline NCBI sequence JSON/JSONL for length fallback; also shared with organelle filtering.',
-                  'sequence_cache_dir':'Shared directory for exact-assembly NCBI sequence metadata cache.',
+            help={'sequence_metadata':'Complete offline ENA sequence report TSV for length fallback; also shared with organelle filtering.',
+                  'sequence_cache_dir':'Shared directory for exact-assembly ENA sequence metadata cache.',
                   'inference_map':'JSON object mapping exact column-2 sources to accurate inference strings or null; unmapped sources preserve existing evidence only.',
-                  'source_format':'auto (default), annevo, tiberius, carbon-a, oriongeno, helixer, braker, gtf, gff3, generic; generic preserves the strict legacy path.',
+                  'source_format':'Compatibility hint for earlier commands; named predictors no longer select structural adapters. Explicit generic defaults to strict normalization.',
+                  'input_format':'Attribute syntax: auto (default), gff3 or gtf.',
+                  'normalization':'Source-independent structural policy: standard (default) or strict (no type/phase/CDS-group rewrites).',
+                  'cds_grouping':'auto (default), single-product or preserve; overrides require standard normalization.',
                   'prediction_method':'auto, ab-initio, evidence-assisted or unspecified; controls default description and inference policy.',
+                  'bioproject':'BioProject accession (PRJEB/PRJNA/PRJDB); populates STUDY in the Webin annotation manifest.',
                   'predictor_model':'Model used by the predictor; recorded in default filename, NAME and DESCRIPTION.',
-                  'organelle_metadata':'Offline NCBI sequence report JSON/JSONL; requires --remove-organelles.',
+                  'organelle_metadata':'Offline ENA sequence report TSV; requires --remove-organelles.',
                   'organelle_cache_dir':'Directory for exact-assembly metadata cache; requires --remove-organelles.'}.get(key))
     for key in ['taxon_id','translation_table','width','start','step']:
         p.add_argument('--'+key.replace('_','-'),type=int,
             help='Optional taxonomy ID; adds ##species. Without it, an existing valid directive is preserved.' if key=='taxon_id' else None)
-    for key in ['no_inference','strict_warnings','use_annevo_lengths','remove_organelles','refresh_organelle_cache','no_ncbi_lengths','refresh_sequence_cache']:
+    p.add_argument('--remove-organelles', nargs='?', const=True, default=None, metavar='SEQID[,SEQID...]',
+                   help='With no value, identify organelles using ENA metadata. With a comma-separated list, exclude exact input sequence IDs without organelle lookup.')
+    for key in ['no_inference','strict_warnings','use_annevo_lengths','refresh_organelle_cache','no_ena_lengths','refresh_sequence_cache']:
         p.add_argument('--'+key.replace('_','-'),action='store_true',default=None,
-            help={'no_ncbi_lengths':'Disable automatic NCBI lookup for missing sequence lengths; does not disable requested organelle filtering.',
+            help={'no_ena_lengths':'Disable automatic ENA lookup for missing sequence lengths; does not disable requested organelle filtering.',
                   'refresh_sequence_cache':'Fetch fresh metadata when a lookup is needed; cannot combine with offline metadata.',
-                  'remove_organelles':'Exclude annotations on NCBI-classified organelle sequences.',
+                  'remove_organelles':'Exclude annotations on ENA-classified organelle sequences.',
                   'refresh_organelle_cache':'Fetch fresh organelle metadata instead of using the cache.'}.get(key))
     p.add_argument('--config',help='JSON defaults; paths resolve relative to the JSON file')
     p.add_argument('--batch',help='TSV of annotations; row paths resolve relative to the TSV')
@@ -305,12 +332,12 @@ def main(argv=None):
         settings.update({k:v for k,v in vars(args).items() if k in SETTING_KEYS and v is not None})
         if args.audit_only:
             check(not any(settings.get(k) for k in ['remove_organelles','organelle_metadata','organelle_cache_dir','refresh_organelle_cache','sequence_metadata','sequence_cache_dir','refresh_sequence_cache']),
-                  'NCBI metadata and organelle filtering options are unavailable in audit-only mode')
+                  'ENA metadata and organelle filtering options are unavailable in audit-only mode')
             check(not args.batch,'Audit mode does not accept --batch')
             check(settings.get('input') and settings.get('report'),'Audit requires --input and --report')
             check(Path(settings['input']).resolve()!=Path(settings['report']).resolve(),'Report cannot overwrite input')
             with core.staged_outputs([settings['report']]) as staged:
-                write_json(staged[settings['report']],core.audit(settings['input'], settings.get('source_format','auto')))
+                write_json(staged[settings['report']],core.audit(settings['input'], settings.get('source_format','auto'), settings.get('input_format', settings.get('source_format') if settings.get('source_format') in {'gtf','gff3'} else 'auto')))
             return 0
         if args.batch:
             check(not any(settings.get(k) for k in ['output','report','manifest','write_locus_tag_map']),

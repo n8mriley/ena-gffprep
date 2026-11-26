@@ -7,12 +7,15 @@ submission receipt or a biological quality assessment.
 
 ## Webin validation
 
+Webin CLI 11.0.0 requires `STUDY` in the annotation manifest. Pass `--bioproject PRJEB123456` during preparation to populate `STUDY` (use your real accession). Older packages without `STUDY` must be regenerated with this option before submission. This option changes only manifest metadata, not GFF3 coordinates or predictions.
+
+
 Change into the prepared package directory. `VALIDATE.txt` contains the command
 pattern. With credentials already exported in the environment:
 
 ```bash
 java -Xmx4g -XX:ActiveProcessorCount=2 \
-  -jar /absolute/path/to/webin-cli-10.0.0-beta.jar \
+  -jar /absolute/path/to/webin-cli-dev-11.0.0.jar \
   -context annotation -manifest manifest.txt \
   -username "$WEBIN_USERNAME" -passwordEnv WEBIN_PASSWORD \
   -validate
@@ -43,7 +46,7 @@ It runs local rules without authentication or archive/registry checks:
 
 ```bash
 python3 run_bundled_validator.py \
-  --jar /path/to/webin-cli-10.0.0-beta.jar \
+  --jar /path/to/webin-cli-dev-11.0.0.jar \
   --gff /path/to/prepared.ena.gff3.gz \
   --log local-validation.log
 ```
@@ -84,23 +87,24 @@ python3 -m unittest discover -s tests -v
 ```
 
 Tests use temporary files, synthetic annotations and mocked network responses.
-They need no NCBI connection, Webin credentials, Java or extra Python packages.
+They need no ENA connection, Webin credentials, Java or extra Python packages.
 `release_verification.json` records the current test result.
 
 | Area | Checks |
 | --- | --- |
-| Input formats | Parsing, escaping, GTF relationships, source detection, CDS grouping, isoforms, phase normalization and existing-format compatibility. |
+| Input formats | Parsing, escaping, GTF relationships, source-independent normalization, syntax overrides, explicit grouping policies, distinct products, isoforms, phase normalization and output compatibility. |
 | Provenance/metadata | Direct-source and explicit inference policies, conflicts, model naming, descriptions, optional taxonomy and genetic-code preservation. |
 | Structure | Parent graphs, single-parent output, multipart IDs, shared leaves, coordinate bounds and advisory CDS arithmetic. |
 | Locus tags | Stable allocation, collisions, suffix syntax, propagation and historical reservations. |
-| NCBI metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, pagination, caching/refresh, failure handling and shared filtering lookups. |
-| Filtering/workflows | Organelle exclusions, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
+| ENA metadata | Exact assemblies, aliases, local-length precedence, bounds, offline data, caching/refresh, failure handling and shared filtering lookups. |
+| Filtering/workflows | Automatic and manual organelle exclusions, optional CLI values, exact-ID validation, header-only exclusions, network bypass, retained references, tag reservation, config/batch behavior, output protection and reproducible compression. |
 | Diagnostics | Supported validator-log associations and review tables. |
 
 Local checks do not establish nucleotide identity with the archived assembly,
 translation correctness, expression, biological partiality, all controlled
 vocabularies, prefix ownership or archive acceptance. Metadata-only filtering
-can miss unlabelled or misclassified organelles. Synthetic fixtures and local
+can miss unlabelled or misclassified organelles. Manual filtering excludes only
+the supplied IDs and does not establish that retained sequences are nuclear. Synthetic fixtures and local
 validator checks, including checks using synthetic bounds, do not certify a real
 submission. Use true assembly metadata and the intended Webin workflow for each
 prepared annotation.

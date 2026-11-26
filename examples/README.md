@@ -18,7 +18,7 @@ python3 ena_gffprep.py \
   --input examples/pilot.gff3 \
   --assembly-accession GCA_123456789.1 \
   --locus-tag-prefix EXAMPLE \
-  --no-inference --no-ncbi-lengths \
+  --no-inference --no-ena-lengths \
   --output-dir example-preparation
 ```
 

@@ -3,7 +3,7 @@
 [![Python tests](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/n8mriley/ena-gffprep/actions/workflows/tests.yml)
 
 Prepare existing genome annotations for ENA decoupled GFF3 submission. Version
-**0.7.0** supports several annotation formats, creates a manifest and locus-tag
+**0.8.0** supports several annotation formats, creates a manifest and locus-tag
 map, and records the preparation settings. It does not run annotation software,
 authenticate with ENA or submit data.
 
@@ -52,13 +52,13 @@ python3 ena_gffprep.py \
 
 For ANNEVO, a recognized versioned header can supply predictor/version. Otherwise
 supply them explicitly, or choose an accurate `--inference` or `--no-inference`.
-In auto format mode, `--predictor ANNEVO` also selects its adapter.
+ANNEVO header and inference handling is retained, but structural normalization is now the same for every source.
 
 | Information | Requirement |
 | --- | --- |
 | Annotation, assembly accession, locus-tag prefix | Required; provide through CLI, configuration or a batch row. GCA/GCF syntax is accepted; use the primary accession appropriate to your ENA submission. |
 | Prediction provenance | Automatic for supported direct sources, with the ANNEVO exception above; other inputs need an explicit policy. See [provenance](#prediction-provenance). |
-| Sequence lengths | Required, but an index is optional. Local lengths or exact-assembly NCBI fallback can supply them. |
+| Sequence lengths | Required, but an index is optional. Local lengths or exact-assembly ENA fallback can supply them. |
 | Previous locus-tag map | Supply the complete cumulative map when updating an annotation. |
 | Taxon ID, model, output directory, product fallback | Optional. |
 
@@ -71,51 +71,89 @@ After preparation, review the reports and [validate the generated manifest](VALI
 - Supported GFF3 or quoted GTF with explicit gene/transcript containers. Arbitrary
   GFF2, embedded sequences and some specialist locations are not supported.
   Text must meet the scripts' ASCII checks.
-- Outbound HTTPS for an uncached NCBI lookup, or a complete offline sequence
-  report. No NCBI CLI or credentials are needed.
+- Outbound HTTPS for an uncached ENA lookup, or a complete offline sequence
+  report. No external CLI or credentials are needed.
 - Java **17+** and a separately obtained compatible Webin JAR for validation.
   Neither is required for Python preparation; the JAR is not included.
 
-## Formats and representation changes
+## Input syntax and structural normalization
 
-`--source-format auto` is the default. Detection reads headers and source-column
-signatures throughout the file, not its filename. The format selects parsing and
-normalization; `--predictor` names the pipeline for metadata. One does not
-necessarily establish the other, especially for multi-component pipelines.
+Every source now uses one graph-based normalization engine. It examines feature
+relationships, IDs and metadata; column 2 and predictor names never choose its
+transformation rules. Unknown annotators receive the same structural treatment
+as recognized ones. Source detection remains separate for provenance, model hints
+and header metadata.
 
-| `--source-format` | Behavior |
+| Option | Values / behavior |
 | --- | --- |
-| `auto` | Selects a recognized dialect. Unrecognized or ambiguous GFF3 uses `generic`. |
-| `annevo` | Groups supported numbered CDS IDs per mRNA; reads recognized sequence-length comments when enabled. Keeps the established ANNEVO inference policy. |
-| `tiberius` | Normalizes coding transcripts and CDS segment IDs; preserves isoforms and mixed Tiberius/TransDecoder sources. |
-| `carbon-a` | Applies common normalization; keeps existing grouped CDS IDs and status/confidence/incomplete-reason metadata. |
-| `oriongeno` | Supports quoted GTF-style attributes, constructs IDs/parents from gene/transcript identifiers and groups CDS segments. |
-| `helixer` | Applies common normalization. A name-only species directive is reported and omitted, or replaced by an explicit taxon URI. Model comments are hints, not software versions. |
-| `braker` | Handles the supplied BRAKER-compatible structure, component sources, codon markers and non-CDS phases. Component signatures do not prove the pipeline name/version. |
-| `gtf` | Parses supported quoted GTF and constructs explicit relationships. Gene and transcript container rows must exist. |
-| `gff3` | Requests common normalization for manually selected GFF3, useful for an unrecognized annotator. |
-| `generic` | Strict GFF3 path without source-specific normalization; expects suitable feature types and logical CDS grouping already. |
+| `--input-format FORMAT` | `auto` (default), `gff3` or `gtf`. Chooses attribute syntax, not annotator. Auto examines the actual rows; mixed GTF/GFF3 attribute syntax is rejected. |
+| `--normalization MODE` | `standard` (default) or `strict`. Standard applies shared transformations. Strict skips type/phase/CDS-group rewrites, but still expands shared leaves for single-parent output and runs structural checks. |
+| `--cds-grouping POLICY` | `auto` (default), `single-product` or `preserve`. Explicit overrides require standard normalization; see below. |
+| `--source-format HINT` | Compatibility option for earlier commands. Named annotators no longer select adapters. Explicit `gtf`/`gff3` supply a syntax default; explicit `generic` supplies a strict-normalization default. Explicit new options take precedence. |
 
-The common adapters convert coding `transcript` to `mRNA`, group compatible
-CDS segments per transcript, normalize numeric non-CDS phases to `.`, and move
-child `transcript_id` values to `original_transcript_id`. Renamed segment IDs
-remain in `original_id`, and changed phases in `original_phase`. Redundant
-identifiers must agree with the hierarchy. Conflicting products/evidence,
-referenced segment IDs and overlapping CDS products are refused rather than
-merged by assumption. Existing grouped CDS IDs are retained.
+Accepted compatibility hints remain `auto`, `annevo`, `tiberius`, `carbon-a`,
+`oriongeno`, `helixer`, `braker`, `gtf`, `gff3` and `generic`. Existing working
+commands can be retained; new commands should use the syntax/policy options.
+An automatically detected unknown source labeled generic does **not** select
+strict mode. Only an explicit generic hint supplies that compatibility default.
 
-Existing exon, intron, UTR and split-codon intervals are preserved. The converter
-does not invent exons, extend exons to cover UTRs, append stop-codon bases or
-infer biological partiality from labels such as `incomplete` or `no_stop`.
-Legal repeated CDS IDs represent intervals of one discontinuous feature.
-Shared leaves may be copied into one row group per parent; shared internal
-subtrees require review. Output rows have at most one parent.
+GFF3 and quoted GTF parsers produce the same internal graph. GTF needs explicit
+gene and transcript container rows; missing containers are not fabricated.
+Relationships are constructed from gene/transcript identifiers, with deterministic
+leaf IDs for the exact input. Arbitrary GFF2 and embedded sequence sections remain
+unsupported.
+
+In standard mode the engine:
+
+- Converts coding `transcript` features to `mRNA`.
+- Gives compatible segments one logical CDS ID, retaining renamed IDs in
+  `original_id` without discarding earlier provenance.
+- Normalizes numeric non-CDS phases to `.`, retaining `original_phase`.
+- Checks redundant gene/transcript identifiers against their ancestors and moves
+  child transcript identifiers to `original_transcript_id`.
+- Duplicates unreferenced shared leaves into single-parent features, retaining
+  their original identifiers where present. Shared internal features are refused.
+
+Coordinates, strands, scores, CDS phases, isoforms and record sources are retained.
+Exon, intron, UTR and split-codon intervals are preserved. No exons or missing
+container features are invented, no exon is extended to cover UTRs, and no
+stop-codon bases are appended. Labels such as incomplete/no_stop do not become
+biological partial flags. Filtering occurs before these transformations.
+
+### CDS grouping policies
+
+| Policy | Behavior |
+| --- | --- |
+| `auto` | Keep existing logical groups. Merge compatible, nonoverlapping uniquely identified segment rows under one mRNA; all-anonymous segment sets can receive a logical ID. Preserve groups carrying distinct explicit protein IDs. Refuse ambiguous mixtures of existing multipart groups. |
+| `single-product` | Explicitly treat compatible CDS intervals under a transcript as one product, including multiple pre-grouped sets. Conflicting protein/product/evidence metadata, overlaps and referenced segment IDs still fail. |
+| `preserve` | Keep supplied CDS IDs and grouping; explicit IDs are required. Other standard normalization still applies. |
+
+Automatic grouping assumes ordinary CDS segment rows with compatible metadata
+represent one product per coding transcript. Parent membership alone is not proof:
+sequence/strand, intervals, product/evidence attributes, references and conflicting
+custom metadata are checked. Distinct products identified by unique protein IDs
+are preserved. Use preserve when separate IDs intentionally represent separate
+products, or curate ambiguous input. Single-product is not a way to override
+biological conflicts. Per-segment `cds_type` metadata can be retained without
+preventing grouping.
+
+New grouped IDs use `TRANSCRIPT.CDS`. Existing valid logical IDs, including directly gene-parented CDSs, are retained;
+regrouping requires a coding transcript parent. Numbered `TRANSCRIPT.CDS.N` segments, including a singleton, normalize to the
+established `TRANSCRIPT.CDS` form irrespective of source. Valid ANNEVO output
+conventions are preserved without an ANNEVO transformation branch. Conversely,
+already-grouped IDs are no longer rejected just because they do not match an
+annotator-specific naming pattern.
+
+`preparation.json` records the shared engine, syntax/policies and rule counts
+under `normalization`. The old adapter field is retained as a compatibility
+summary of those counts, not as evidence of a selected source adapter. Original
+attributes and input hashes support tracing changes and reproducible reruns.
 
 ## Prediction provenance
 
 In `--prediction-method auto` mode, direct source labels **ANNEVO, Helixer,
 Tiberius, Carbon-A and OrionGeno** are treated as ab initio. In supported
-non-ANNEVO adapters, CDSs from those direct sources receive:
+non-ANNEVO provenance policies, CDSs from those direct sources receive:
 
 ```text
 ab initio prediction:TOOL[:VERSION]
@@ -127,7 +165,7 @@ inference is preserved. Combined labels such as `Tiberius,transdecoder` and
 other components receive no new inference automatically. Mixed files can
 therefore contain both automatically annotated and unchanged evidence fields.
 
-ANNEVO's adapter instead uses its detected/supplied predictor and version to
+ANNEVO's compatibility provenance policy uses its detected/supplied predictor and version to
 construct one inference for CDSs, and rejects conflicting existing values.
 Without a usable version, choose explicit inference or no-inference. Detected
 ANNEVO provenance conflicts are rejected.
@@ -158,57 +196,37 @@ Inference describes the prediction method; it does not prove expression or
 biological correctness. Choosing no-inference may leave short-CDS evidence
 requirements unresolved in the external validator.
 
-## Sequence lengths and NCBI metadata
+## Sequence lengths and ENA metadata
 
-Length sources have this priority:
-
-1. Explicit `--fai` and/or `--assembly-report`; both must agree when supplied.
-2. Input `##sequence-region` declarations and recognized ANNEVO length comments.
-3. Exact-assembly NCBI sequence metadata when retained annotated sequences still
-   lack lengths and no explicit external length file was supplied.
-
-Missing IDs in an explicit FAI/report remain errors. Partial input declarations
-are checked against NCBI if fallback is needed. Complete local lengths avoid a
-length lookup. Lengths are never estimated from feature coordinates.
-
-A FAI supplies bounds without reading nucleotide sequences. An assembly report
-also maps aliases to the requested accession column. NCBI fallback matches exact
-GenBank/RefSeq accessions, original sequence names and UCSC-style aliases; it
-never strips accession versions. It maps column 1 and output declarations to
-GenBank accessions where available, otherwise the available canonical accession;
-`--accession-column refseq` requests RefSeq instead. Missing/ambiguous matches,
-length conflicts and coordinates beyond sequence bounds stop preparation.
+ENA is the only remote assembly metadata provider. Exact versioned GCA sequence
+reports are downloaded over HTTPS from the ENA assembly directory. No NCBI
+API, JSON/JSONL, RefSeq accession mapping or NCBI assembly report is supported.
+Local FAI, sequence-region directives and recognized ANNEVO comments remain
+supported; automatic ENA length lookup is needed when local lengths are missing.
+Explicit offline reports also enable accession mapping. Missing or ambiguous
+aliases and conflicting lengths stop preparation. ENA chromosome names may differ
+from original submitted scaffold names; use versioned INSDC accessions directly.
 
 | Option | Default / effect |
 | --- | --- |
-| `--fai PATH` | Optional existing sequence-name/length index. |
-| `--assembly-report PATH` | Optional standard NCBI assembly report for the exact assembly. |
-| `--accession-column genbank\|refseq` | `genbank`; target for assembly-report and NCBI-fallback mapping. |
-| `--use-annevo-lengths` | Automatic without FAI/report in ANNEVO mode; an explicit request requires matching comments and the ANNEVO adapter. Can also cross-check an external source. |
-| `--no-ncbi-lengths` | Off; disables NCBI length fallback, including reuse of filtering metadata for missing lengths. Does not disable requested organelle filtering. |
-| `--sequence-metadata PATH` | Optional complete offline NCBI sequence-report JSON/JSONL or tool cache file. |
-| `--sequence-cache-dir PATH` | Optional shared cache override. |
-| `--refresh-sequence-cache` | Off; fetch fresh metadata when a lookup is needed. Incompatible with offline metadata. |
+| `--fai PATH` | Optional local sequence length index. |
+| `--assembly-report PATH` | Local ENA TSV report; compatibility name. |
+| `--sequence-metadata PATH` | Complete local ENA TSV named `GCA_..._sequence_report.txt` for the exact version. |
+| `--no-ena-lengths` | Disable automatic ENA length lookup, not automatic organelle filtering. |
+| `--use-annevo-lengths` | Recognized ANNEVO length comments. |
+| `--sequence-cache-dir PATH` | Override shared ENA metadata cache. |
+| `--refresh-sequence-cache` | Refresh when lookup is required. |
 
-The default cache is `$XDG_CACHE_HOME/ena-gffprep/ncbi-sequences/`, or
-`~/.cache/ena-gffprep/ncbi-sequences/` if unset. Each versioned assembly has its
-own JSON file. Reports do not expire automatically. A corrupt cache or failed
-lookup stops preparation; refresh does not silently reuse old data. Offline
-metadata is not supplemented from the network. HTTPS requests use a 30-second
-timeout per attempt and up to three attempts for transient failures.
-
-Offline files must contain complete sequence reports, not assembly summaries
-or hand-selected organelle records. Snake_case API JSON and camelCase Datasets
-JSONL are accepted. Pagination/count checks reject detectable partial responses;
-JSONL has no independent completeness marker. Every record must identify the
-exact assembly version and a positive length. Length-only use does not require
-organelle classifications.
-
-Length fallback and organelle removal share one loaded report. Their general
-and organelle-specific metadata/cache paths must agree if both are supplied.
-Preserve the exact metadata file: the preparation report records its path,
-SHA-256, source, retrieval information and matched sequences. Metadata matching
-does not prove nucleotide identity with the archived assembly.
+The default cache is `$XDG_CACHE_HOME/ena-gffprep/ena-sequences/` (or
+`~/.cache/ena-gffprep/ena-sequences/`). It stores the original TSV with exact
+versioned filename. Old NCBI caches are not read. Offline filenames are checked,
+but the TSV does not independently encode the assembly accession or total count;
+use the original complete ENA download, not a renamed or subset report.
+Reports are checked for schema, unique versioned accessions, positive lengths,
+and all required annotated IDs. A truncated report ending on a complete row
+may not be detectable without an independent checksum or record count.
+Automatic filtering and length fallback share one report. Provenance records
+path, SHA-256, source and matches. Local metadata cannot establish nucleotide identity.
 
 ## Optional annotation metadata and filtering
 
@@ -217,10 +235,10 @@ does not prove nucleotide identity with the archived assembly.
 | `--taxon-id INTEGER` | Optional positive taxon ID; adds a canonical `##species` URI. Otherwise a recognized input URI is preserved, or the directive is omitted. Taxonomy conflicts fail. |
 | `--translation-table INTEGER` | `1`; fallback for translating CDSs without a table. Existing supported per-CDS tables are preserved; pseudogenic CDSs omit them. |
 | `--default-product "TEXT"` | No default; fills missing CDS products only when explicitly requested. Existing products are retained. |
-| `--remove-organelles` | Off; excludes all feature rows on NCBI-classified organelle sequences before conversion and new tag allocation. |
-| `--organelle-metadata PATH` | Filtering-specific name for an offline sequence report; requires `--remove-organelles`. |
-| `--organelle-cache-dir PATH` | Filtering-specific cache override; requires `--remove-organelles`. |
-| `--refresh-organelle-cache` | Filtering-specific refresh flag; requires `--remove-organelles`. |
+| `--remove-organelles [SEQID[,SEQID...]]` | Off when omitted. With no value, identify organelles from ENA metadata. With a value, exclude the exact input sequence IDs listed, without an organelle metadata lookup. Both modes run before normalization and new tag allocation. |
+| `--organelle-metadata PATH` | Filtering-specific name for an offline sequence report; requires automatic mode (bare `--remove-organelles`). |
+| `--organelle-cache-dir PATH` | Filtering-specific cache override; requires automatic mode (bare `--remove-organelles`). |
+| `--refresh-organelle-cache` | Filtering-specific refresh flag; requires automatic mode (bare `--remove-organelles`). |
 | `--strict-warnings` | Off; warnings in the preparation report become fatal. Notes are separate, and external validators can still report their own warnings. |
 
 Table 1 is a nuclear assumption, not a universal genetic code. No code is inferred
@@ -231,11 +249,33 @@ or another deliberate strategy. Taxonomy lookup is not inferred from a species
 name: Helixer's name-only directive is omitted with a warning if no taxon is
 provided, while an explicit taxon produces a canonical URI.
 
-Organelle removal uses metadata, not name/size heuristics. The assembly itself
-and manifest PRIMARY_ID are unchanged. A header-only exclusion TSV means no
-annotated organelle records were removed; an assembly can contain an organelle
-sequence with no annotations in the input. See [ORGANELLES.md](ORGANELLES.md) for
-classification, reference checks and tag reservation.
+Choose automatic identification or explicitly supplied sequence IDs:
+
+```bash
+# Automatic identification from complete ENA metadata:
+--remove-organelles
+
+# Manual exclusion of exact input IDs (replace these example accessions):
+--remove-organelles OV123456.1,OV123457.1
+```
+
+Manual IDs match column 1 or an input `##sequence-region` declaration exactly,
+including accession versions. Unknown names, empty entries and duplicate names
+are rejected. No name/size heuristics or automatic alias matching are used in
+manual mode. The list is your assertion that these sequences should be excluded;
+retained sequences are not thereby established as nuclear.
+
+Manual filtering bypasses organelle identification, but missing retained sequence
+lengths can still trigger ENA lookup. For offline preparation, provide lengths in
+the input or via `--fai`/`--assembly-report`, and add `--no-ena-lengths` to prevent
+length lookup. Do not combine manual IDs with organelle-specific metadata/cache
+options; general sequence metadata/cache options remain available for lengths.
+
+The assembly itself and manifest PRIMARY_ID are unchanged. Reports record the
+exclusions and whether their source was manual or automatic. A manual TSV entry
+has an empty `ena_sequence` and `location` set to `manual exclusion`. See
+[ORGANELLES.md](ORGANELLES.md) for classification, reference checks and tag
+reservation.
 
 ## Locus tags
 
@@ -265,7 +305,7 @@ for a rerun. The input annotation is not overwritten.
 | File | Contents |
 | --- | --- |
 | `LABEL.ena.gff3.gz` | Prepared annotation. |
-| `manifest.txt` | Tab-separated NAME, GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. The GFF3 path is relative to the manifest. |
+| `manifest.txt` | Tab-separated NAME, STUDY (when --bioproject is supplied), GFF3, ANALYSIS_TYPE, PRIMARY_ID and DESCRIPTION fields. Webin CLI 11 requires STUDY for submission; supply --bioproject to include it. The GFF3 path is relative to the manifest. |
 | `locus_tags.tsv` | Cumulative `gene_id`, `locus_tag`, `status` map, including reserved entries. |
 | `preparation.json` | Input hashes, settings, source detection, transformations, lengths, provenance, warnings and advisory checks. |
 | `preparation.txt` | Human-readable preparation summary. |
@@ -302,6 +342,7 @@ Genome annotation prepared for ENA decoupled submission. Annotator: BRAKER Versi
 | `--output-dir PATH` | Exact new package directory; overrides out-root/label directory placement, not the filename. |
 | `--name "TEXT"` | Override manifest NAME. |
 | `--description "TEXT"` | Override DESCRIPTION completely; metadata is not automatically appended to custom text. |
+| `--bioproject PRJEB123456` | BioProject accession written as STUDY in the annotation manifest. Accepted prefixes: PRJEB, PRJNA, PRJDB. Supported in CLI, JSON defaults, and batch TSV. Supply for Webin CLI 11.0.0. |
 | `--assembly-accession ACCESSION` | Required versioned assembly accession; written as PRIMARY_ID. |
 
 Compressed GFF bytes are reproducible for identical input/settings because gzip
@@ -313,13 +354,15 @@ The profile version is separate from the converter version.
 ## Configuration and batches
 
 JSON defaults use CLI option names with underscores. Unknown keys are rejected.
-Use JSON booleans, not quoted strings. For example:
+Use JSON booleans for boolean settings. `remove_organelles` also accepts a
+comma-separated string of exact sequence IDs for manual filtering (see
+[ORGANELLES.md](ORGANELLES.md#config-batch-and-audit)). For example:
 
 ```json
 {
   "translation_table": 1,
   "out_root": "../prepared_annotations",
-  "sequence_cache_dir": "../ncbi-cache"
+  "sequence_cache_dir": "../ena-cache"
 }
 ```
 
@@ -361,8 +404,8 @@ Audit requires only an input and a new report path:
 python3 ena_gffprep.py --input annotation.gff3 --audit-only --report audit.json
 ```
 
-It is offline and descriptive: no prepared GFF, manifest, locus tags or NCBI
-lookup. Filtering and NCBI metadata options cannot be used. CDS arithmetic is
+It is offline and descriptive: no prepared GFF, manifest, locus tags or ENA
+lookup. Filtering and ENA metadata options cannot be used. `--input-format` can restrict the parsed syntax; audit does not run the normalizer. CDS arithmetic is
 grouped by parent and can conflate distinct products. The 90-nt review threshold
 is not an asserted ENA rejection rule. The report's parent directory must exist.
 
@@ -396,8 +439,8 @@ metadata; external validation and account/archive checks remain separate.
 | --- | --- |
 | Cannot determine predictor/version | Supply accurate metadata or choose explicit inference/no-inference; inspect detected format/provenance in the report. |
 | Model requires predictor/version | Provide both; model names do not establish software versions. |
-| Missing/ambiguous sequence or length conflict | Check the exact assembly, aliases and supplied length files; use complete offline NCBI metadata if needed. |
-| NCBI request/cache failure | Check HTTPS/cache permissions, explicitly refresh a corrupt cache, or supply offline metadata. |
+| Missing/ambiguous sequence or length conflict | Check the exact assembly, aliases and supplied length files; use complete offline ENA metadata if needed. |
+| ENA request/cache failure | Check HTTPS/cache permissions, explicitly refresh a corrupt cache, or supply offline metadata. |
 | Unexpected output name/description | Check label, name, description and explicit-output overrides. |
 | Existing output | Choose a new directory, label or file path. |
 | Invalid/conflicting locus tag | Check prefix syntax, stable gene IDs and the complete cumulative map. |

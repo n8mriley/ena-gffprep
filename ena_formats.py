@@ -1,11 +1,11 @@
-"""Input dialect recognition and conservative representation adapters.
+"""Input syntax helpers and prediction provenance detection.
 
 Detection records observed sources, never guesses versions from filenames or
-model names. Adapters preserve coordinates, strand, scores and CDS phases.
-ANNEVO retains its established adapter and provenance policy in the core.
+model names. Structural normalization is implemented in ena_normalize and never
+selects rules by predictor/source name.
 """
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 
 FORMATS = {'auto', 'generic', 'annevo', 'tiberius', 'carbon-a', 'oriongeno', 'helixer', 'braker', 'gtf', 'gff3'}
 SOURCES = {'tiberius': ('tiberius', 'Tiberius'), 'carbon-a': ('carbon-a', 'Carbon-A'),
@@ -89,54 +89,15 @@ def gtf_identity(a, feature, line):
 
 
 def adapt(rows, scalar, require):
-    """Normalize supported non-ANNEVO dialects after organelle exclusion.
+    """Compatibility entry point for the shared structural normalizer.
 
-    One CDS product per transcript is accepted only for unreferenced segments
-    with compatible product-level metadata. Distinct protein IDs or overlapping
-    coding intervals are refused; existing grouped CDS IDs are retained.
+    The main CLI calls ena_normalize.normalize directly for every source.
+    This helper retains the earlier in-place API for programmatic callers.
     """
-    counts = Counter(); groups = defaultdict(list)
-    ids = {scalar(r['a'],'ID') for r in rows if 'ID' in r['a']}
-    refs = {p for r in rows for k in ('Parent','Derives_from') for p in r['a'].get(k,[])}
-    nodes = {scalar(r['a'],'ID'):r for r in rows if 'ID' in r['a']}
-    for r in rows:
-        a = r['a']; fid = scalar(a,'ID'); kind = r['c'][2]
-        if 'transcript_id' in a:
-            expected = fid if kind in {'mRNA','transcript'} else scalar(a,'Parent')
-            require(a['transcript_id'] == [expected], f'Line {r["line"]}: transcript_id conflicts with ID/Parent')
-        if 'gene_id' in a:
-            cursor = r; seen = set()
-            while cursor['c'][2] not in {'gene','pseudogene','protein_coding_gene','ncRNA_gene'}:
-                parent = scalar(cursor['a'],'Parent')
-                if parent not in nodes or parent in seen: break
-                seen.add(parent); cursor = nodes[parent]
-            if cursor['c'][2] in {'gene','pseudogene','protein_coding_gene','ncRNA_gene'}:
-                require(a['gene_id'] == [scalar(cursor['a'],'ID')], f'Line {r["line"]}: gene_id conflicts with ancestor gene')
-    coding = {p for r in rows if r['c'][2]=='CDS' for p in r['a'].get('Parent',[])}
-    for r in rows:
-        a,c = r['a'],r['c']; fid = scalar(a,'ID')
-        if c[2]=='transcript' and fid in coding: c[2]='mRNA'; counts['coding_transcripts_to_mRNA']+=1
-        if 'transcript_id' in a and c[2] not in {'mRNA','transcript','primary_transcript','rRNA','tRNA','ncRNA','lnc_RNA','miRNA','snRNA','snoRNA','misc_RNA'}:
-            require('original_transcript_id' not in a or a['original_transcript_id']==a['transcript_id'], 'Conflicting original_transcript_id')
-            a['original_transcript_id']=a.pop('transcript_id');counts['transcript_id_attributes_mapped']+=1
-        if c[2]=='CDS': groups[scalar(a,'Parent')].append(r)
-    transcripts = {scalar(r['a'],'ID') for r in rows if r['c'][2]=='mRNA'}
-    for parent,parts in groups.items():
-        require(parent in transcripts, f'CDS requires one coding transcript parent: {parent}')
-        old = {scalar(r['a'],'ID') for r in parts}
-        if len(old)==1 and None not in old: continue
-        require(None not in old and len(old)==len(parts), f'Ambiguous CDS grouping for {parent}')
-        require(not old & refs, f'Referenced CDS segment IDs require explicit review: {parent}')
-        intervals=sorted((r['start'],r['end']) for r in parts)
-        require(all(a[1]<b[0] for a,b in zip(intervals,intervals[1:])), f'Overlapping CDS products for {parent}')
-        for key in ('protein_id','product','transl_table','exception','pseudo','pseudogene','inference','experiment'):
-            values={tuple(r['a'].get(key,[])) for r in parts}
-            require(len(values)==1, f'Conflicting {key} across CDS segments: {parent}')
-        new = parent+'.CDS'; require(new not in ids, 'Normalized CDS ID collision: '+new);ids.add(new)
-        for r in parts:
-            require('original_id' not in r['a'], 'Existing original_id requires explicit CDS grouping review: '+parent)
-            r['a']['original_id']=r['a']['ID'];r['a']['ID']=[new];counts['cds_rows_renamed']+=1
-    return dict(counts)
+    from ena_normalize import normalize
+    normalized, counts = normalize(rows, scalar, require)
+    rows[:] = normalized
+    return counts
 
 
 def source_inference(detection, predictor=None, version=None):
