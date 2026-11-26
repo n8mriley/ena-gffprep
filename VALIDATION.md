@@ -7,15 +7,19 @@ submission receipt or a biological quality assessment.
 
 ## Webin validation
 
-Webin CLI 11.0.0 requires `STUDY` in the annotation manifest. Preparation now requires a BioProject accession (CLI, config or batch row) and always writes `STUDY` to generated manifests. Use a study that your Webin account can reference. Older packages without `STUDY` must be regenerated with this option before submission. This option changes only manifest metadata, not GFF3 coordinates or predictions.
+The annotation manifest must contain `STUDY`. Preparation requires a BioProject accession (CLI, config or batch row) and always writes `STUDY` to generated manifests. Use a study that your Webin account can reference. Older packages without `STUDY` must be regenerated with this option before submission. This option changes only manifest metadata, not GFF3 coordinates or predictions.
 
 
 Change into the prepared package directory. `VALIDATE.txt` contains the command
-pattern. With credentials already exported in the environment:
+pattern. Obtain a compatible Webin CLI JAR supporting decoupled annotation
+submissions from ENA and set `WEBIN_JAR` to its absolute path. With credentials
+already exported in the environment:
 
 ```bash
+export WEBIN_JAR=/absolute/path/to/webin-cli.jar
+
 java -Xmx4g -XX:ActiveProcessorCount=2 \
-  -jar /absolute/path/to/webin-cli-dev-11.0.0.jar \
+  -jar "$WEBIN_JAR" \
   -context annotation -manifest manifest.txt \
   -username "$WEBIN_USERNAME" -passwordEnv WEBIN_PASSWORD \
   -validate
@@ -26,9 +30,9 @@ value. The variable must be exported for Java to read it. Keep credentials out
 of manifests and source files. The generated GFF3 path is relative to its manifest;
 check that the referenced file exists if Webin cannot read it.
 
-Use the JAR and environment instructions supplied by ENA. This example follows
-the supplied development workflow and omits `-test`; do not assume that every
-build routes requests identically. No Python command here submits data.
+Follow the Java, environment and service-selection instructions for your Webin
+CLI build, including whether `-test` is appropriate. No Python command here
+submits data.
 
 Read the detailed reports even after a success message. Warnings may remain.
 Short CDSs and other biological findings can require accurate evidence or review;
@@ -42,11 +46,12 @@ account or submission-service requirement.
 ## Local validator and report review
 
 The optional bundled check extracts gff3tools from your separately supplied JAR.
-It runs local rules without authentication or archive/registry checks:
+It runs local rules without authentication or archive/registry checks. Use the
+same `WEBIN_JAR` variable defined above:
 
 ```bash
 python3 run_bundled_validator.py \
-  --jar /path/to/webin-cli-dev-11.0.0.jar \
+  --jar "$WEBIN_JAR" \
   --gff /path/to/prepared.ena.gff3.gz \
   --log local-validation.log
 ```
