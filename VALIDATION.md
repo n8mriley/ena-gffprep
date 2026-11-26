@@ -120,3 +120,13 @@ the supplied IDs and does not establish that retained sequences are nuclear. Syn
 validator checks, including checks using synthetic bounds, do not certify a real
 submission. Use true assembly metadata and the intended Webin workflow for each
 prepared annotation.
+
+### Extended standalone validation (development)
+
+```bash
+python3 run_bundled_validator.py --jar "$WEBIN_JAR" \
+  --gff prepared.ena.gff3.gz --log local-validation.log \
+  --memory 4g --threads 2 --metrics metrics.json --json-report validator.json
+```
+
+Optionally add `--sequence assembly.fa` for sequence-aware checks, using the exact assembly and matching identifiers. Output paths must be new. Metrics and sequence options depend on the supplied validator build. The helper uses standalone defaults and does not apply fixes or authenticate. See [CONFORMANCE.md](CONFORMANCE.md) for scope and remaining gaps.

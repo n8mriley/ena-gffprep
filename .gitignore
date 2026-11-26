@@ -31,3 +31,10 @@ config.local.json
 
 # Operating-system files
 .DS_Store
+
+# Locally acquired/generated third-party references
+/so_snapshot.json
+/local_vocabularies.json
+/so_snapshot.tmp
+/local_vocabularies.tmp
+*.obo

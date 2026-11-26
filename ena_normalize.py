@@ -7,7 +7,8 @@ coordinates, strand, scores and CDS phases, and refuses ambiguous product merges
 import re
 from collections import Counter, defaultdict
 
-GENES = {'gene','pseudogene','protein_coding_gene','ncRNA_gene'}
+from ena_vocabularies import GENE_FEATURES
+GENES = GENE_FEATURES
 RNAS = {'mRNA','transcript','primary_transcript','rRNA','tRNA','ncRNA',
         'lnc_RNA','miRNA','snRNA','snoRNA','misc_RNA'}
 PRODUCT_KEYS = ('protein_id','product','transl_table','exception','pseudo',

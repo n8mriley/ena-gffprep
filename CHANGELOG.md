@@ -1,5 +1,28 @@
 # Changelog
 
+- Generate third-party reference indexes locally instead of distributing them; pin SO and gff3tools inputs and record Dbxref list checksum.
+
+## Unreleased
+
+- Preserve explicitly declared one-base ribosomal-slippage CDS overlaps without changing phases.
+- Normalize supported pseudogenic component types before phase validation, check multipart codon attribute consistency and extend gene ownership checks.
+- Document authoritative topology requirements and remaining specialist limitations.
+
+- Expand compartment-specific translation-table pragmas using ENA sequence metadata; report assignment provenance and refuse unresolved compartments. — Controlled vocabularies
+
+- Validate feature names and resolve supported SO accessions before parsing CDS phases.
+- Validate registered Dbxref tags and pseudogene subtypes offline.
+- Normalise specific pseudogene gene types, sharing ownership classification with organelle filtering.
+- Extend conventional parent-type checks and conformance regression fixtures.
+
+## Unreleased — Initial conformance development
+
+- Check taxonomy URI providers, Dbxref syntax, amino acid names, multipart partiality and exceptional CDS stop placement.
+- Support primary-only translation pragmas and report translation-code sources.
+- Omit uninterpreted directives with report entries.
+- Extend standalone Java validation reporting and resource options.
+- Document remaining conformance gaps and add targeted regression tests.
+
 ## Unreleased — User documentation
 
 - Add release-pinned installation, offline quick start and guide navigation.
@@ -95,3 +118,6 @@
 ## 0.5.0 — Streamlined workflow
 
 - Add package naming, manifests, reports, predictor detection, configuration and batch preparation.
+
+- Development: integrate pinned SO graph, obsolete/non-feature diagnostics and
+  relationship evidence reporting without relaxing INSDC mapping constraints.

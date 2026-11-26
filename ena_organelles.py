@@ -26,7 +26,8 @@ NON_ORGANELLES = {'chromosome', 'nuclear', 'nucleus', 'plasmid', 'linkagegroup',
                  'linkage group', 'scaffold', 'contig', 'unplaced', 'unlocalized',
                  'unplaced-scaffold', 'unlocalized-scaffold', 'unlocalized scaffold',
                  'unplaced scaffold', 'na', 'un', 'unknown'}
-GENE_TYPES = {'gene', 'pseudogene', 'protein_coding_gene', 'ncRNA_gene'}
+from ena_vocabularies import GENE_FEATURES
+GENE_TYPES = GENE_FEATURES
 API_BASE = 'https://ftp.ebi.ac.uk/pub/databases/ena/assembly/'
 
 
@@ -245,6 +246,7 @@ def sequence_lengths(args, seqids, regions):
     """
     shared = getattr(args, '_ena_sequence_metadata', None)
     records, provenance = shared or load_metadata(args, require_classification=False)
+    args._ena_sequence_metadata = (records, provenance)
     index = defaultdict(list)
     for record in records:
         for alias in record['aliases']:

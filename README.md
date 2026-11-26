@@ -522,3 +522,38 @@ in [CITATION.cff](CITATION.cff) or GitHub's "Cite this repository" feature.
 Copyright (c) 2026 Genome Research Ltd.
 
 This software is distributed under the [MIT License](LICENSE).
+
+## Submission conformance
+
+See [CONFORMANCE.md](CONFORMANCE.md) for the targeted INSDC Submission profile, local checks, unsupported representations and external validation requirements.
+
+The development conformance checks use locally generated feature and Dbxref vocabulary indexes; see [CONFORMANCE.md](CONFORMANCE.md) for provenance and limitations. Valid specialist terms outside the snapshot require review.
+
+### Compartment-specific genetic codes (development)
+
+For mixed nuclear and organellar annotations, use explicit CDS `transl_table` attributes or a file-level pragma such as `#!transl_table primary:1,mitochondrion:2` with verified ENA sequence metadata (`--sequence-metadata`). The example codes are not universal. See [CONFORMANCE.md](CONFORMANCE.md) for supported compartment keys and unresolved-classification safeguards.
+
+Specialist feature support is conservative: explicitly declared one-base ribosomal-slippage CDS overlaps and supported pseudogenic component types are handled; circular virtual coordinates require authoritative sequence topology and remain unsupported. See [CONFORMANCE.md](CONFORMANCE.md).
+
+The development conformance checks use a pinned local Sequence Ontology graph
+alongside the INSDC-oriented feature mapping. See [CONFORMANCE.md](CONFORMANCE.md)
+for provenance, legacy aliases and relationship assessment limitations.
+
+### Local reference setup (development branch)
+
+Before preparing annotations or running the full regression suite, obtain the
+SO OBO release 2026-08-07, the compatible Webin CLI JAR containing gff3tools
+5.5.1, and a plain-text list of current INSDC Dbxref database tags (one per line,
+case-sensitive, no identifiers). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+```bash
+python3 tools/setup_references.py --obo /path/to/so.obo \
+  --jar /path/to/webin-cli.jar --dbxref-tags /path/to/dbxref-tags.txt
+```
+
+The exact OBO bytes and embedded JAR are checksum-pinned. The tag list is
+user-maintained; use the same list for reproducible results. The regression
+suite expects the Stage 5 reference version and tags including GeneID, GO and
+ATCC(in host). Generated indexes are ignored by Git and must not be published.
+The setup command performs no network access. Original software remains MIT;
+external reference materials retain their upstream terms.

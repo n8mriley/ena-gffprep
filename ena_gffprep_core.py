@@ -25,7 +25,11 @@ GENES = {'gene', 'pseudogene'}
 GENIC = {'mRNA', 'transcript', 'CDS', 'exon', 'intron', 'five_prime_UTR',
          'three_prime_UTR', 'tRNA', 'rRNA', 'ncRNA', 'lnc_RNA', 'miRNA',
          'snRNA', 'snoRNA', 'misc_RNA', 'primary_transcript', 'prim_transcript',
-         'tmRNA', 'precursor_RNA'}
+         'tmRNA', 'precursor_RNA', 'lncRNA', 'pre_miRNA', 'piRNA', 'siRNA',
+         'scRNA', 'scaRNA', 'SRP_RNA', 'guide_RNA', 'telomerase_RNA',
+         'vault_RNA', 'Y_RNA', 'RNase_MRP_RNA', 'RNase_P_RNA',
+         'coding_exon', 'noncoding_exon', 'five_prime_coding_exon',
+         'interior_coding_exon', 'spliceosomal_intron', 'recoded_codon', 'anticodon'}
 # NCBI genetic-code registry checked 2026-10-15; IDs are not a continuous range.
 TRANSLATION_TABLES = {1,2,3,4,5,6,9,10,11,12,13,14,15,16,21,22,23,24,25,26,27,28,29,30,31,32,33}
 SUPPORTED_TYPES = {'gene','exon','intron','CDS','mRNA','rRNA','tRNA','ncRNA_gene',
@@ -186,6 +190,11 @@ def parse(path, flexible=False, input_format="auto"):
                 require(c[0] and not re.search(r'\s', c[0]), f'Line {line_no}: invalid seqid')
                 require(bool(re.fullmatch(r'[0-9]+', c[3])) and bool(re.fullmatch(r'[0-9]+', c[4])), f'Line {line_no}: coordinates must be integers')
                 require(c[1] and c[2] and not re.search(r'\s', c[1] + c[2]), f'Line {line_no}: invalid source/type')
+                from ena_conformance import feature_name
+                c[2] = feature_name(c[2], require, line_no)
+                pseudogenic = c[2] in {'pseudogenic_CDS', 'pseudogenic_tRNA', 'pseudogenic_rRNA', 'pseudogenic_transcript'}
+                if pseudogenic:
+                    c[2] = c[2].removeprefix('pseudogenic_')
                 start, end = int(c[3]), int(c[4])
                 require(1 <= start <= end, f'Line {line_no}: invalid coordinates')
                 require(c[6] in {'+', '-', '.', '?'}, f'Line {line_no}: invalid strand')
@@ -204,6 +213,9 @@ def parse(path, flexible=False, input_format="auto"):
                     a = gtf_identity(gtf_attributes(c[8]), c[2], line_no)
                 else:
                     a = attributes(c[8])
+                if pseudogenic:
+                    require('pseudo' not in a or a['pseudo'] == ['true'], f'Line {line_no}: conflicting pseudogenic feature flag')
+                    a['pseudo'] = ['true']
                 for key in ('ID', 'Parent', 'Derives_from', 'transcript_id', 'protein_id'):
                     if key in a:
                         require(all(not re.search(r'\s', v) for v in a[key]), f'Line {line_no}: whitespace in {key}')
@@ -469,13 +481,19 @@ def prepare(args):
     normalization_mode = getattr(args, 'normalization', 'standard')
     flexible = normalization_mode == 'standard'
     rows, regions, comments = parse(args.input, flexible=flexible, input_format=getattr(args,'input_format','auto'))
-    require(not any(c.startswith('#!transl_table') for c in comments), 'File-level transl_table pragma requires explicit per-CDS translation tables before preparation; this version does not interpret organelle scope')
+    pragmas = [c for c in comments if c.startswith('#!transl_table')]
+    require(len(pragmas) <= 1, 'Duplicate transl_table pragma')
+    from ena_translation import parse_pragma, resolve_compartments
+    pragma_tables = parse_pragma(pragmas[0], TRANSLATION_TABLES, require) if pragmas else {}
+    primary_table = pragma_tables.get('primary')
+    if pragmas:
+        comments.remove(pragmas[0])
     name_only_species = []
     input_species = []
     input_taxa = set()
     for comment in comments:
         if comment.startswith('##species'):
-            match = re.search(r'(?:/taxonomy/|/tax-id/|[?&]id=)([0-9]+)(?:/|$|&)', comment)
+            match = re.fullmatch(r'##species\s+https://(?:www\.ncbi\.nlm\.nih\.gov/datasets/taxonomy/|www\.ebi\.ac\.uk/ena/taxonomy/rest/tax-id/|www\.ncbi\.nlm\.nih\.gov/Taxonomy/Browser/wwwtax\.cgi\?id=)([0-9]+)/?', comment)
             if flexible and match is None and re.fullmatch(r'##species\s+[A-Za-z][A-Za-z_]+', comment):
                 name_only_species.append(comment)
                 continue  # name is reported, never guessed into a taxonomy ID
@@ -534,11 +552,16 @@ def prepare(args):
         comments = [c for c in comments if c.startswith(('# This output', '# ANNEVO', '# Citation:'))]
     for comment in comments:
         if comment.startswith(('##','#!')) and not comment.startswith(('##attribute-ontology','##source-ontology')):
-            notes.append(f'Uninterpreted input directive retained: {comment}')
+            notes.append(f'Uninterpreted input directive omitted: {comment}')
+            removed_comments.append(comment)
+    comments = [c for c in comments if not c.startswith(('##','#!')) or c.split()[0] in {'##attribute-ontology','##source-ontology'}]
+    translation_sources = defaultdict(int)
     missing_products = 0
     for r in rows:
         c, a = r['c'], r['a']
         validate_attributes(r)
+        from ena_conformance import validate_row
+        validate_row(r, require)
         row_inference = getattr(args, 'inference_by_source', {}).get(c[1], inference)
         if getattr(args, 'automatic_source_inference', False) and 'inference' in a:
             row_inference = None  # preserve supplied evidence under automatic policy
@@ -554,6 +577,12 @@ def prepare(args):
         require(r['end'] <= sizes[c[0]], f'Line {r["line"]}: coordinate beyond sequence length; circular virtual coordinates require specialist handling')
         if c[2] in {'ncRNA_gene', 'protein_coding_gene'}:
             c[2] = 'gene'
+        from ena_vocabularies import PSEUDOGENE_FEATURES
+        if c[2] in PSEUDOGENE_FEATURES:
+            subtype = PSEUDOGENE_FEATURES[c[2]]
+            require('pseudogene' not in a or a['pseudogene'] == [subtype], f'Line {r["line"]}: conflicting pseudogene subtype')
+            a['pseudogene'] = [subtype]
+            c[2] = 'pseudogene'
         if c[2] == 'pseudogene':
             c[2] = 'gene'
             a.setdefault('pseudo', ['true'])
@@ -571,23 +600,33 @@ def prepare(args):
     for fid, parts in nodes.items():
         signatures = {(r['c'][0], r['c'][2], r['c'][6], tuple(r['a'].get('Parent', []))) for r in parts}
         require(len(signatures) == 1, f'Inconsistent repeated ID {fid}; remote/trans-spliced features require specialist handling')
-        for attr in ('protein_id','transcript_id','transl_table','product','pseudo','pseudogene','exception'):
+        for attr in ('protein_id','transcript_id','transl_table','product','pseudo','pseudogene','exception','amino_acid','codon_redefined'):
             values = {tuple(r['a'][attr]) for r in parts if attr in r['a']}
             require(len(values) <= 1, f'Conflicting {attr} across repeated ID {fid}')
             if values:
                 value = list(next(iter(values)))
                 for part in parts:
                     part['a'].setdefault(attr, list(value))
+        from ena_conformance import validate_partials
+        validate_partials(fid, parts, require)
         intervals = sorted((r['start'], r['end']) for r in parts)
-        require(all(a[1] < b[0] for a, b in zip(intervals, intervals[1:])), f'Overlapping/duplicate intervals for repeated ID {fid}')
+        slippage = parts[0]['c'][2] == 'CDS' and 'ribosomal_slippage' in parts[0]['a'].get('exception', [])
+        require(len(set(intervals)) == len(intervals), f'Overlapping/duplicate intervals for repeated ID {fid}')
+        require(all(a[1] < b[0] or (slippage and a[1] == b[0] and a[0] < b[0] and a[1] < b[1]) for a, b in zip(intervals, intervals[1:])), f'Overlapping/duplicate intervals for repeated ID {fid}')
     # The structural normalizer has already produced single-parent leaves.
     require(all(len(parts[0]['a'].get('Parent',[])) <= 1 for parts in nodes.values()), 'Normalizer left multiple-parent features')
+    from ena_ontology import relationship, DATA, is_a
+    from ena_vocabularies import reference_data
+    ontology_relationships = defaultdict(int)
     children = defaultdict(list)
     indegree = {fid: 0 for fid in nodes}
     for fid, parts in nodes.items():
         parent = scalar(parts[0]['a'], 'Parent')
         if parent:
             require(parent in nodes, f'Missing Parent {parent} for {fid}')
+            from ena_conformance import validate_relationship
+            validate_relationship(fid, parts, nodes[parent], require)
+            ontology_relationships[relationship(parts[0]['c'][2], nodes[parent][0]['c'][2])] += 1
             p = nodes[parent][0]
             require(p['c'][0] == parts[0]['c'][0] and (p['c'][6] == parts[0]['c'][6] or p['c'][6] in '.?'), f'Parent/child seqid or strand mismatch: {fid}')
             lo, hi = min(r['start'] for r in nodes[parent]), max(r['end'] for r in nodes[parent])
@@ -671,6 +710,12 @@ def prepare(args):
     for fid in ordered:
         a = nodes[fid][0]['a']
         pseudo_nodes[fid] = ('pseudogene' in a or a.get('pseudo') == ['true'] or pseudo_nodes.get(scalar(a, 'Parent'), False))
+    compartments, compartment_metadata = {}, None
+    needs_code = {r['c'][0] for fid in ordered if not pseudo_nodes[fid]
+                  for r in nodes[fid] if r['c'][2] == 'CDS' and 'transl_table' not in r['a']}
+    if needs_code and (set(pragma_tables) - {'primary'} or (pragma_tables and getattr(args, '_ena_sequence_metadata', None))):
+        compartments, compartment_metadata = resolve_compartments(args, needs_code, sizes, require)
+    code_by_sequence = defaultdict(lambda: defaultdict(int))
     for fid in ordered:
         owner = owners[fid]
         for r in nodes[fid]:
@@ -685,9 +730,21 @@ def prepare(args):
                 if pseudo:
                     a.pop('transl_table', None)
                 elif 'transl_table' not in a:
-                    a['transl_table'] = [str(args.translation_table)]
+                    if compartments:
+                        key = compartments[c[0]]
+                        require(key in pragma_tables, 'Missing or uncertain transl_table compartment for '+c[0]+'; supply explicit CDS transl_table')
+                        value, source = pragma_tables[key], key+'_pragma'
+                    elif primary_table is not None:
+                        value, source = primary_table, 'primary_pragma'
+                    else:
+                        value, source = args.translation_table, 'configured_or_default'
+                    a['transl_table'] = [str(value)]
+                    translation_sources[source] += 1
                 else:
+                    translation_sources['CDS_attribute'] += 1
                     require(str(scalar(a, 'transl_table')).isdigit() and int(scalar(a,'transl_table')) in TRANSLATION_TABLES, f'Invalid transl_table for {fid}')
+                if not pseudo:
+                    code_by_sequence[c[0]][scalar(a, 'transl_table')] += 1
                 if 'product' not in a:
                     if args.default_product:
                         a['product'] = [args.default_product]
@@ -727,7 +784,18 @@ def prepare(args):
               'sequence_lengths': {seq: sizes[seq] for seq in sorted({r['c'][0] for r in rows})},
               'feature_types_in_supported_subset': sorted({r['c'][2] for r in rows} & SUPPORTED_TYPES),
               'feature_types_needing_external_vocabulary_check': sorted({r['c'][2] for r in rows} - SUPPORTED_TYPES),
+              'local_reference_provenance': {k: reference_data()[k] for k in ('jar_sha256', 'dbxref_source_sha256')},
+              'ontology': {'version': DATA['version'], 'source_sha256': DATA['source_sha256'],
+                           'parent_relationships_by_logical_feature': dict(ontology_relationships),
+                           'gene_subtypes': sorted({r['c'][2] for r in rows if is_a(r['c'][2], 'gene')}),
+                           'transcript_subtypes': sorted({r['c'][2] for r in rows if is_a(r['c'][2], 'transcript')})},
               'biological_review': biological_review,
+              'translation_table_sources_by_CDS_row': dict(translation_sources),
+              'input_primary_translation_table': primary_table,
+              'input_translation_tables': pragma_tables,
+              'translation_compartments': compartments,
+              'translation_compartment_metadata': compartment_metadata,
+              'translation_codes_by_sequence': {k:dict(v) for k,v in code_by_sequence.items()},
               'removed_comments': removed_comments,
               'product_policy': 'explicit_fallback' if args.default_product else 'preserve_existing_only',
               'checks_not_performed': ['FASTA-based CDS translation, start/stop codons, internal stops and biological partiality',
